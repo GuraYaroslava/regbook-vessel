@@ -24,9 +24,9 @@
 
 ## Фильтры
 
-### 0. Порт приписки / Города / City
+### 0. Порт приписки / Города / Cities
 
-filter_city
+filter_cities
 
 | Поле       | Название       |
 |------------|----------------|
@@ -37,9 +37,9 @@ filter_city
 
 [Ссылка на форму выбора города.](https://lk.rs-class.org/regbook/getDictionary2?d=gorodRegbook&f=formfield)
 
-### 1. Флаг / Страны / Country
+### 1. Флаг / Страны / Countries
 
-filter_country
+filter_countries
 
 | Поле       | Название       |
 |------------|----------------|
@@ -49,9 +49,9 @@ filter_country
 
 [Ссылка на форму выбора страны.](https://lk.rs-class.org/regbook/getDictionary2?d=countryId&f=formfield)
 
-### 2. Тип судна / Статистические группы судов / Type
+### 2. Тип судна / Статистические группы судов / Types
 
-filter_type
+filter_types
 
 | Поле       | Название       |
 |------------|----------------|
@@ -60,9 +60,9 @@ filter_type
 
 [Ссылка на форму выбора типа судна.](https://lk.rs-class.org/regbook/getDictionary2?d=statgr&f=formfield)
 
-### 3. Ледовый класс / Ледовая категория / Class
+### 3. Ледовый класс / Ледовая категория / Classes
 
-filter_class
+filter_classes
 
 | Поле       | Название       |
 |------------|----------------|
@@ -237,10 +237,15 @@ https://lk.rs-class.org/regbook/regbookVessel \
 ```
 sudo apt install python3
 sudo apt install python3-pip
+pip3 install mysql-connector-python
 ```
 
 Запуск:
 
 ```
 python3 run.py
+```
+
+```
+mysql -u root -p
 ```
