@@ -240,10 +240,11 @@ sudo apt install python3-pip
 pip3 install mysql-connector-python
 ```
 
-Запуск:
+Запуск, где первый аргумент, если 1, то пересоздает схему БД, второй - стартует парсиг фильтров:
 
 ```
-python3 run.py
+python3 parse_filters.py 1 0
+python3 parse_cards.py
 ```
 
 ```
