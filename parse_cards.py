@@ -278,6 +278,30 @@ def create_or_update_card_filters(card_id, filters):
 
 # ----------------------------------------------------------------------------------------------------------------------
 
+def create_or_replace_card_certificates(card_id, certificates):
+    connection = mysql.connector.connect(host='localhost', user='root', password='root', database='regbook')
+    cursor = connection.cursor(prepared=True)
+
+    try:
+        cursor.execute('DELETE FROM card_certificates WHERE card_id = %s', (card_id,))
+        for certificate in certificates:
+            columns = list(certificate.keys())
+            query_columns = ', '.join(columns)
+            query_values = ', '.join(map(lambda column: '%s', columns))
+            params = list(certificate.values())
+            sql = 'INSERT INTO card_certificates ({0}) VALUES ({1})'.format(query_columns, query_values)
+            print(sql, params)
+            cursor.execute(sql, params)
+
+        connection.commit()
+
+    finally:
+        cursor.close()
+        connection.close()
+    return
+
+# ----------------------------------------------------------------------------------------------------------------------
+
 def print_start_status(caption, level=1, current_datetime=None):
     current_datetime = current_datetime if current_datetime is not None else datetime.datetime.now()
     separator = '---' * level + '>'
@@ -294,10 +318,10 @@ def print_end_status(start_datetime, level=1, caption='Завершено'):
 # ----------------------------------------------------------------------------------------------------------------------
 
 # Спарсить карточку с характеристиками судна
-def parse_card_by_identifier(identifier, filters=None):
-    card_id = get_or_create_card(identifier)
+def parse_card_by_identifier(card_identifier, filters=None, with_status=False):
+    card_id = get_or_create_card(card_identifier)
 
-    url = 'https://lk.rs-class.org/regbook/vessel?fleet_id={0}&a=print'.format(identifier)
+    url = 'https://lk.rs-class.org/regbook/vessel?fleet_id={0}&a=print'.format(card_identifier)
     page = urlopen(url)
     html = page.read().decode('utf-8')
     soup = BeautifulSoup(html, 'html.parser')
@@ -329,6 +353,69 @@ def parse_card_by_identifier(identifier, filters=None):
     if filters is not None and card_id is not None:
         create_or_update_card_filters(card_id, filters)
 
+    if with_status == True:
+        parse_card_certificates_by_card_identifier(card_identifier, card_id)
+
+    return
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+def prepare_certificate_field(key, value):
+    value = value.strip(); result = value
+
+    if key in ['created_at', 'closed_at', 'new_closed_at']:
+        if value != '':
+            result = datetime.datetime.strptime(value, '%d.%m.%Y')
+            print(result)
+        else:
+            result = None
+
+    return result
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+def parse_card_certificates_by_card_identifier(card_identifier, card_id=None):
+    if card_id is None:
+        card_id = get_or_create_card(card_identifier)
+
+    db_columns = [ 'e_cert', 'type', 'name', 'code', 'created_at', 'closed_at', 'new_closed_at', 'state' ]
+
+    url = 'https://lk.rs-class.org/regbook/status?fleet_id={0}'.format(card_identifier)
+    page = urlopen(url)
+    html = page.read().decode('utf-8')
+    soup = BeautifulSoup(html, 'html.parser')
+
+    scripts = soup.find_all('script')
+    script = scripts[len(scripts)-1]
+    matches = re.findall(r"jsonString\s\=\s(.+);", script.text.strip().replace('],]', ']]'), flags=re.M)
+    data = json.loads(matches[0].strip())
+
+#     aaDataV1 = data['aaDataV1']
+#     status = [ aaDataV1[len(aaDataV1)-2], aaDataV1[len(aaDataV1)-1] ]
+#
+#     aaDataV2 = data['aaDataV2']
+#     contacts = aaDataV2
+
+    item_index = 0; card_certificates = list()
+    for item in data['aaDataS0']:
+        certificate = { 'card_id': card_id }; db_column_index = 0; column_index = 0
+        for column in data['aoColumnsS0']:
+            is_db_column = db_column_index < len(db_columns)
+            field = db_columns[db_column_index] if is_db_column else ''
+            value = prepare_certificate_field(field, item[column_index]) if is_db_column else ''
+
+            if 'visible' in column.keys():
+                if column['visible'] == True and is_db_column:
+                    certificate[field] = value; db_column_index += 1
+            elif is_db_column:
+                certificate[field] = value; db_column_index += 1
+            column_index += 1
+
+        card_certificates.append(certificate)
+        item_index += 1
+
+    create_or_replace_card_certificates(card_id, card_certificates)
+
     return
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -356,12 +443,22 @@ def parse_card_by_filters(filters, level=1):
         tr_length = len(tds)
         if tr_length == 0: continue
         last_column = tds[tr_length-1]
-        matches = re.findall(r'fleet_id=(\d+)', last_column.find('a').get('href'))
-        identifier = matches[0]
+
+        with_status = False; identifier = None
+        links = last_column.find_all('a')
+        for link in links:
+            href = link.get('href')
+            matches = re.findall(r'(vessel|status)\?fleet_id=(\d+)', href)
+            action = matches[0][0]
+            identifier = matches[0][1]
+            with_status = with_status or (action == 'status')
+            print(action, identifier, with_status)
+            if action != 'status' and action != 'vessel':
+                print('ЕСТЬ ЕЩЕ ССЫЛКА ДЛЯ ПАРСИНГА', href)
 
         card_time_start = datetime.datetime.now()
         print_start_status('[{0}] Карточка #{1}'.format(tr_index+1, identifier), level)
-        parse_card_by_identifier(identifier, filters)
+        parse_card_by_identifier(identifier, filters, with_status)
         print_end_status(card_time_start, level)
         tr_index += 1
 
@@ -411,16 +508,23 @@ elif sys.argv[1] == '3':
     print_end_status(test_start_time)
 
 elif sys.argv[1] == '4':
-    print_start_status('Спарсить карточки по фильтру: Россия, Владивосток, Научно-исследовательские')
+#     print_start_status('Спарсить карточки по фильтру: Россия, Владивосток, Научно-исследовательские')
+#     parse_card_by_filters([
+#           { 'name': 'gorodRegbook', 'value': '0E224C4F-DE2B-4DD6-AB9B-B6BBABB7B7C4', 'field': 'filter_city_identifier' },
+#           { 'name': 'countryId', 'value': '6CF1E5F4-2B6D-4DC6-836B-287154684870', 'field': 'filter_country_identifier' },
+#           { 'name': 'statgr', 'value': '47488F18-691C-AD5D-0A1C-9EA637E43848', 'field': 'filter_type_identifier' },
+#     ], 2)
+
+    print_start_status('Спарсить карточки по фильтру: Панама, Панама, Нефтеналивные')
     parse_card_by_filters([
-        { 'name': 'gorodRegbook', 'value': '0E224C4F-DE2B-4DD6-AB9B-B6BBABB7B7C4', 'field': 'filter_city_identifier' },
-        { 'name': 'countryId', 'value': '6CF1E5F4-2B6D-4DC6-836B-287154684870', 'field': 'filter_country_identifier' },
-        { 'name': 'statgr', 'value': '47488F18-691C-AD5D-0A1C-9EA637E43848', 'field': 'filter_type_identifier' },
-    ])
+        { 'name': 'gorodRegbook', 'value': 'DD1212EB-494D-41E4-A54A-B914845826A1', 'field': 'filter_city_identifier' },
+        { 'name': 'countryId', 'value': 'D3339EB0-B3A8-461F-8493-DE358CAB09C7', 'field': 'filter_country_identifier' },
+        { 'name': 'statgr', 'value': 'F188B3EF-E54D-D82E-6F79-AD7D9A4A4CCD', 'field': 'filter_type_identifier' },
+    ], 2)
 
 elif sys.argv[1] == '5':
     test_start_time = datetime.datetime.now()
-    print_start_status('Спарсить карточки по фильтру')
+    print_start_status('Спарсить карточки по фильтрам из БД')
 #     filters = [
 #         Filter('Города', 'gorodRegbook', 'cities', [ 'identifier', 'name', 'name_eng', 'country_ru' ], 'filter_city_identifier'),
 #         Filter('Страны', 'countryId', 'countries', [ 'identifier', 'name', 'name_eng' ], 'filter_country_identifier'),
