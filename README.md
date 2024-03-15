@@ -240,13 +240,38 @@ sudo apt install python3-pip
 pip3 install mysql-connector-python
 ```
 
-Запуск, где первый аргумент, если 1, то пересоздает схему БД, второй - стартует парсиг фильтров:
+Запуск парсера фильтров, где первый аргумент, если 1, то пересоздает схему БД, второй - стартует парсиг фильтров:
 
 ```
 python3 parse_filters.py 1 0
+```
+
+Запуск парсера карточек, где первый аргумент, если
+- 1 - Спарсить тестовые карточки
+- 2 - Сравнить карточки с сайта с карточками из БД
+- 3 - Выгрузить тестовые карточки из БД в формате .csv
+- 4 - Спарсить карточки по фильтру: Россия, Владивосток, Научно-исследовательские
+- 5
+
+```
 python3 parse_cards.py
 ```
 
 ```
 mysql -u root -p
+```
+
+```mysql
+    select
+      group_properties.name as `group`,
+      properties.name as `property`,
+      cards_properties.property_value as `value`
+    from
+      cards_properties
+      left join cards on cards.id = cards_properties.card_id
+      left join properties on properties.id = cards_properties.property_id
+      left join group_properties on group_properties.id = properties.group_id
+    where
+      cards.identifier = 990745
+    order by group_properties.id, properties.id;
 ```

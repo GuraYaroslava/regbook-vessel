@@ -6,15 +6,10 @@ import sys
 import datetime
 import mysql.connector
 
-class Filter:
-    def __init__(self, ru_name, cite_name, db_name, db_columns):
-        self.ru_name = ru_name
-        self.cite_name = cite_name
-        self.db_name = db_name
-        self.db_columns = db_columns
 
 # ----------------------------------------------------------------------------------------------------------------------
 
+# Удалить существующую БД, если есть и создать новую со всеми таблицами
 def init_schema():
     connection = mysql.connector.connect(host='localhost', user='root', password='root')
     cursor = connection.cursor()
@@ -24,7 +19,11 @@ def init_schema():
         cursor.execute('CREATE DATABASE IF NOT EXISTS regbook')
 
         with open('migrations/init_schema.sql', encoding='utf8') as source:
-            cursor.execute(source.read(), multi=True)
+            for result in cursor.execute(source.read(), multi=True):
+                print(result.statement)
+
+    except mysql.connector.Error as error:
+        print(error)
 
     finally:
         cursor.close()
@@ -32,60 +31,72 @@ def init_schema():
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-def add_filter(filter, values):
-    connection = mysql.connector.connect(host='localhost', user='root', password='root', database='regbook')
-    cursor = connection.cursor(prepared=True)
+class Filter:
+    def __init__(self, ru_name, cite_name, db_name, db_columns):
+        # человеческое название
+        self.ru_name = ru_name
+        # название фильтра для составления запроса
+        self.cite_name = cite_name
+        # название таблицы в БД
+        self.db_name = db_name
+        # список нзваний колонок в таблице БД
+        self.db_columns = db_columns
 
-    try:
-        filter_name = filter.db_name
+    # Добавить записть в таблицу данного фильтра
+    # @param dict values
+    def add_row(self, values):
+        connection = mysql.connector.connect(host='localhost', user='root', password='root', database='regbook')
+        cursor = connection.cursor(prepared=True)
 
-        sql = 'SELECT id FROM `filter_{0}` WHERE identifier = %s'.format(filter_name)
-        params = (values.get('identifier'),)
-        cursor.execute(sql, params)
-        results = cursor.fetchall()
+        try:
+            sql = 'SELECT id FROM `filter_{0}` WHERE identifier = %s'.format(self.db_name)
+            params = (values.get('identifier'),)
+            cursor.execute(sql, params)
+            results = cursor.fetchall()
 
-        # время по нулевому поясу
-        # SET time_zone = '+00:00'
-        ts = datetime.datetime.utcnow().replace(tzinfo=datetime.timezone.utc)
-        columns = filter.db_columns.copy()
-        params = list(values.values())
+            # время по нулевому поясу
+            # SET time_zone = '+00:00'
+            ts = datetime.datetime.utcnow().replace(tzinfo=datetime.timezone.utc)
+            columns = list(values.keys())
+            params = list(values.values())
 
-        if cursor.rowcount == 0:
-            columns.append('created_at')
-            columns.append('updated_at')
-            params.append(ts)
-            params.append(ts)
+            if cursor.rowcount == 0:
+                columns.append('created_at')
+                columns.append('updated_at')
+                params.append(ts)
+                params.append(ts)
 
-            filter_columns = ', '.join(columns)
-            filter_values = ', '.join(map(lambda column: '%s', columns))
-            sql = 'INSERT INTO `filter_{0}` ({1}) VALUES ({2})'.format(filter_name, filter_columns, filter_values)
+                filter_columns = ', '.join(columns)
+                filter_values = ', '.join(map(lambda column: '%s', columns))
+                sql = 'INSERT INTO `filter_{0}` ({1}) VALUES ({2})'.format(self.db_name, filter_columns, filter_values)
 
-        else:
-            columns.append('updated_at')
-            params.append(ts)
-            filter_values = ', '.join(map(lambda column: '{0} = %s'.format(column), columns))
-            params.append(values.get('identifier'))
-            sql = 'UPDATE filter_{0} SET {1} WHERE filter_{0}.identifier = %s'.format(filter_name, filter_values)
+            else:
+                columns.append('updated_at')
+                params.append(ts)
+                filter_values = ', '.join(map(lambda column: '{0} = %s'.format(column), columns))
+                params.append(values.get('identifier'))
+                sql = 'UPDATE filter_{0} SET {1} WHERE filter_{0}.identifier = %s'.format(self.db_name, filter_values)
 
-        cursor.execute(sql, params)
-        connection.commit()
+            cursor.execute(sql, params)
+            connection.commit()
 
-    finally:
-        cursor.close()
-        connection.close()
+        finally:
+            cursor.close()
+            connection.close()
 
-    return
+        return
 
 # ----------------------------------------------------------------------------------------------------------------------
 
+# Спарсить все значения данного фильтра
+# @param Filter filter
 def parse_filter(filter):
     url = 'https://lk.rs-class.org/regbook/getDictionary2?d={0}&f=formfield'.format(filter.cite_name)
     page = urlopen(url)
     html = page.read().decode('utf-8')
     soup = BeautifulSoup(html, 'html.parser')
 
-    tr_index = 0; trs = soup.find_all('tr')
-    for tr in trs:
+    for tr in soup.find_all('tr'):
         values = {}; td_index = 0; tds = tr.find_all('td')
         for td in tds:
             a = td.find('a')
@@ -101,9 +112,7 @@ def parse_filter(filter):
             td_index += 1
 
         if len(values.values()) > 0:
-            add_filter(filter, values)
-
-        tr_index += 1
+            filter.add_row(values)
 
     return
 
@@ -135,7 +144,7 @@ if sys.argv[1] == '1':
 
 if sys.argv[2] == '1':
     filter_start_time = datetime.datetime.now()
-    print_start_status('Спарсить фильтры', 2)
+    print_start_status('Спарсить фильтры')
     filters = [
         Filter('Города', 'gorodRegbook', 'cities', [ 'identifier', 'name', 'name_eng', 'country_ru' ]),
         Filter('Страны', 'countryId', 'countries', [ 'identifier', 'name', 'name_eng' ]),
@@ -144,9 +153,9 @@ if sys.argv[2] == '1':
     ]
     for filter in filters:
         start_time = datetime.datetime.now()
-        print_start_status('фильтр '+filter.ru_name.upper(), 3)
+        print_start_status('Фильтр '+filter.ru_name.upper(), 2)
         parse_filter(filter)
         print_end_status(start_time, 3)
-    print_end_status(filter_start_time, 2)
+    print_end_status(filter_start_time)
 
 print_end_status(total_start_time, 0)

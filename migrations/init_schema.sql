@@ -10,7 +10,8 @@ CREATE TABLE `filter_cities` (
     `country_ru` varchar(255) COLLATE utf8_unicode_ci NOT NULL COMMENT 'Название страны (ru)',
     `created_at` timestamp NULL DEFAULT NULL,
     `updated_at` timestamp NULL DEFAULT NULL,
-    PRIMARY KEY (`id`)
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `filter_cities_identifier_unique` (`identifier`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci COMMENT='Города';
 
 /* ------------------------------------------------------------------------------------------------------------------ */
@@ -24,7 +25,8 @@ CREATE TABLE `filter_countries` (
      `name_eng` varchar(255) COLLATE utf8_unicode_ci NOT NULL COMMENT 'Название страны (eng)',
      `created_at` timestamp NULL DEFAULT NULL,
      `updated_at` timestamp NULL DEFAULT NULL,
-     PRIMARY KEY (`id`)
+     PRIMARY KEY (`id`),
+     UNIQUE KEY `filter_countries_identifier_unique` (`identifier`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci COMMENT='Страны';
 
 /* ------------------------------------------------------------------------------------------------------------------ */
@@ -39,7 +41,8 @@ CREATE TABLE `filter_types` (
     `name_eng` varchar(255) COLLATE utf8_unicode_ci NOT NULL COMMENT 'Название типа судна (eng)',
     `created_at` timestamp NULL DEFAULT NULL,
     `updated_at` timestamp NULL DEFAULT NULL,
-    PRIMARY KEY (`id`)
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `filter_types_identifier_unique` (`identifier`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci COMMENT='Статистические группы судов';
 
 /* ------------------------------------------------------------------------------------------------------------------ */
@@ -52,7 +55,8 @@ CREATE TABLE `filter_classes` (
     `name` varchar(255) COLLATE utf8_unicode_ci NOT NULL COMMENT 'Название ледовой категории (ru)',
     `created_at` timestamp NULL DEFAULT NULL,
     `updated_at` timestamp NULL DEFAULT NULL,
-    PRIMARY KEY (`id`)
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `filter_classes_identifier_unique` (`identifier`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci COMMENT='Ледовый класс';
 
 /* ------------------------------------------------------------------------------------------------------------------ */
@@ -99,9 +103,10 @@ CREATE TABLE `cards_properties` (
     `card_id` int(10) unsigned DEFAULT NULL COMMENT 'Карточка судна',
     `property_id` int(10) unsigned DEFAULT NULL COMMENT 'Характеристика',
     `property_value` TEXT COLLATE utf8_unicode_ci NOT NULL COMMENT 'Значение характеристики',
+    `updated_at` timestamp NULL DEFAULT NULL,
     PRIMARY KEY (`id`),
     KEY `cards_properties_card_id_foreign` (`card_id`),
-    CONSTRAINT `cards_properties_card_id_foreign` FOREIGN KEY (`card_id`) REFERENCES `cards` (`id`) ON DELETE SET NULL,
+    CONSTRAINT `cards_properties_card_id_foreign` FOREIGN KEY (`card_id`) REFERENCES `cards` (`id`) ON DELETE CASCADE,
     KEY `cards_properties_property_id_foreign` (`property_id`),
     CONSTRAINT `cards_properties_property_id_foreign` FOREIGN KEY (`property_id`) REFERENCES `properties` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci COMMENT='Характеристики';
@@ -110,28 +115,50 @@ CREATE TABLE `cards_properties` (
 DROP TABLE IF EXISTS `cards_filters`;
 
 CREATE TABLE `cards_filters` (
-     `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
-     `card_id` int(10) unsigned DEFAULT NULL,
-     `filter_city_id` int(10) unsigned DEFAULT NULL,
-     `filter_country_id` int(10) unsigned DEFAULT NULL,
-     `filter_type_id` int(10) unsigned DEFAULT NULL,
-     `filter_class_id` int(10) unsigned DEFAULT NULL,
-     PRIMARY KEY (`id`),
+    `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+    `card_id` int(10) unsigned DEFAULT NULL,
 
-     KEY `cards_filters_card_id_foreign` (`card_id`),
-     CONSTRAINT `cards_card_id_foreign` FOREIGN KEY (`card_id`) REFERENCES `cards` (`id`) ON DELETE SET NULL,
+    `filter_city_identifier` varchar(255) COLLATE utf8_unicode_ci DEFAULT NULL,
+    `filter_country_identifier` varchar(255) COLLATE utf8_unicode_ci DEFAULT NULL,
+    `filter_type_identifier` varchar(255) COLLATE utf8_unicode_ci DEFAULT NULL,
+    `filter_class_identifier` varchar(255) COLLATE utf8_unicode_ci DEFAULT NULL,
 
-     KEY `cards_filters_filter_city_id_foreign` (`filter_city_id`),
-     CONSTRAINT `cards_filters_filter_city_id_foreign` FOREIGN KEY (`filter_city_id`) REFERENCES `filter_cities` (`id`) ON DELETE SET NULL,
+    PRIMARY KEY (`id`),
 
-     KEY `cards_filters_filter_country_id_foreign` (`filter_country_id`),
-     CONSTRAINT `cards_filters_filter_country_id_foreign` FOREIGN KEY (`filter_country_id`) REFERENCES `filter_countries` (`id`) ON DELETE SET NULL,
+    KEY `cards_filters_card_id_foreign` (`card_id`),
+    CONSTRAINT `cards_filters_card_id_foreign` FOREIGN KEY (`card_id`) REFERENCES `cards` (`id`) ON DELETE SET NULL,
 
-     KEY `cards_filters_filter_type_id_foreign` (`filter_type_id`),
-     CONSTRAINT `cards_filters_filter_type_id_foreign` FOREIGN KEY (`filter_type_id`) REFERENCES `filter_types` (`id`) ON DELETE SET NULL,
+    KEY `cards_filters_filter_city_identifier_foreign` (`filter_city_identifier`),
+    CONSTRAINT `cards_filters_filter_city_identifier_foreign` FOREIGN KEY (`filter_city_identifier`) REFERENCES `filter_cities` (`identifier`) ON DELETE SET NULL,
 
-     KEY `cards_filters_filter_class_id_foreign` (`filter_class_id`),
-     CONSTRAINT `cards_filters_filter_class_id_foreign` FOREIGN KEY (`filter_class_id`) REFERENCES `filter_classes` (`id`) ON DELETE SET NULL
+    KEY `cards_filters_filter_country_identifier_foreign` (`filter_country_identifier`),
+    CONSTRAINT `cards_filters_filter_country_identifier_foreign` FOREIGN KEY (`filter_country_identifier`) REFERENCES `filter_countries` (`identifier`) ON DELETE SET NULL,
+
+    KEY `cards_filters_filter_type_identifier_foreign` (`filter_type_identifier`),
+    CONSTRAINT `cards_filters_filter_type_identifier_foreign` FOREIGN KEY (`filter_type_identifier`) REFERENCES `filter_types` (`identifier`) ON DELETE SET NULL,
+
+    KEY `cards_filters_filter_class_identifier_foreign` (`filter_class_identifier`),
+    CONSTRAINT `cards_filters_filter_class_identifier_foreign` FOREIGN KEY (`filter_class_identifier`) REFERENCES `filter_classes` (`identifier`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci COMMENT='Зависимости карточек с фильтрами';
+
+/* ------------------------------------------------------------------------------------------------------------------ */
+
+DROP TABLE IF EXISTS `card_certificates`;
+
+CREATE TABLE `card_certificates` (
+    `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+    `card_id` int(10) unsigned DEFAULT NULL,
+    `e_cert` varchar(255) COLLATE utf8_unicode_ci NOT NULL    COMMENT 'E-cert',
+    `type` varchar(255) COLLATE utf8_unicode_ci NOT NULL      COMMENT 'Тип',
+    `name` varchar(255) COLLATE utf8_unicode_ci NOT NULL      COMMENT 'Название свидетельства',
+    `code` varchar(255) COLLATE utf8_unicode_ci NOT NULL      COMMENT 'Код',
+    `created_at` timestamp NULL DEFAULT NULL                  COMMENT 'Дата выдачи (с)',
+    `closed_at` timestamp NULL DEFAULT NULL                   COMMENT 'Срок действия (по)',
+    `new_closed_at` timestamp NULL DEFAULT NULL               COMMENT 'Срок продлен до',
+    `state` varchar(255) COLLATE utf8_unicode_ci DEFAULT NULL COMMENT 'Состояние',
+    PRIMARY KEY (`id`),
+    KEY `card_certificates_card_id_foreign` (`card_id`),
+    CONSTRAINT `card_certificates_card_id_foreign` FOREIGN KEY (`card_id`) REFERENCES `cards` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci COMMENT='Свидетельства';
 
 /* ------------------------------------------------------------------------------------------------------------------ */
