@@ -12,13 +12,23 @@ import mysql.connector
 
 # ----------------------------------------------------------------------------------------------------------------------
 
+def get_db_connection():
+    host = config('DB_HOST')
+    user = config('DB_USERNAME')
+    password = config('DB_PASSWORD')
+    database = config('DB_DATABASE')
+
+    return mysql.connector.connect(host=host, user=user, password=password, database=database)
+
+# ----------------------------------------------------------------------------------------------------------------------
+
 class Card:
     def __init__(self, identifier):
         self.identifier = identifier
 
     # Получить характеристики из БД
     def get_data(self):
-        connection = mysql.connector.connect(host='localhost', user='root', password='root', database='regbook')
+        connection = get_db_connection()
         cursor = connection.cursor(prepared=True)
 
         try:
@@ -111,7 +121,7 @@ class Filter:
 
     # Получить список значений фильтра
     def get_list(self):
-        connection = mysql.connector.connect(host='localhost', user='root', password='root', database='regbook')
+        connection = get_db_connection()
         cursor = connection.cursor(prepared=True)
 
         try:
@@ -133,7 +143,7 @@ class Filter:
 def get_or_create_group(name):
     group_id = None
 
-    connection = mysql.connector.connect(host='localhost', user='root', password='root', database='regbook')
+    connection = get_db_connection()
     cursor = connection.cursor(prepared=True)
 
     try:
@@ -159,7 +169,7 @@ def get_or_create_group(name):
 def get_or_create_property(name, group_id):
     property_id = None
 
-    connection = mysql.connector.connect(host='localhost', user='root', password='root', database='regbook')
+    connection = get_db_connection()
     cursor = connection.cursor(prepared=True)
 
     try:
@@ -185,7 +195,7 @@ def get_or_create_property(name, group_id):
 def get_or_create_card(identifier):
     card_id = None
 
-    connection = mysql.connector.connect(host='localhost', user='root', password='root', database='regbook')
+    connection = get_db_connection()
     cursor = connection.cursor(prepared=True)
 
     try:
@@ -220,7 +230,7 @@ def create_or_update_card_property(property):
     property_value = property['property_value']
     ts = datetime.datetime.utcnow().replace(tzinfo=datetime.timezone.utc)
 
-    connection = mysql.connector.connect(host='localhost', user='root', password='root', database='regbook')
+    connection = get_db_connection()
     cursor = connection.cursor(prepared=True)
 
     try:
@@ -253,7 +263,7 @@ def create_or_update_card_property(property):
 #   field   # название поля под фильтр в таблице связей cards_filters
 # }, ]
 def create_or_update_card_filters(card_id, filters):
-    connection = mysql.connector.connect(host='localhost', user='root', password='root', database='regbook')
+    connection = get_db_connection()
     cursor = connection.cursor(prepared=True)
 
     try:
@@ -279,18 +289,26 @@ def create_or_update_card_filters(card_id, filters):
 # ----------------------------------------------------------------------------------------------------------------------
 
 def create_or_replace_card_certificates(card_id, certificates):
-    connection = mysql.connector.connect(host='localhost', user='root', password='root', database='regbook')
+    return create_or_replace_card_(card_id, certificates, 'card_certificates')
+
+def create_or_replace_card_contacts(card_id, contacts):
+    return create_or_replace_card_(card_id, contacts, 'card_contacts')
+
+def create_or_replace_card_states(card_id, states):
+    return create_or_replace_card_(card_id, states, 'card_states')
+
+def create_or_replace_card_(card_id, records, db_name):
+    connection = get_db_connection()
     cursor = connection.cursor(prepared=True)
 
     try:
-        cursor.execute('DELETE FROM card_certificates WHERE card_id = %s', (card_id,))
-        for certificate in certificates:
-            columns = list(certificate.keys())
+        cursor.execute('DELETE FROM {0} WHERE card_id = %s'.format(db_name), (card_id,))
+        for record in records:
+            columns = list(record.keys())
             query_columns = ', '.join(columns)
             query_values = ', '.join(map(lambda column: '%s', columns))
-            params = list(certificate.values())
-            sql = 'INSERT INTO card_certificates ({0}) VALUES ({1})'.format(query_columns, query_values)
-            print(sql, params)
+            params = list(record.values())
+            sql = 'INSERT INTO {0} ({1}) VALUES ({2})'.format(db_name, query_columns, query_values)
             cursor.execute(sql, params)
 
         connection.commit()
@@ -298,6 +316,7 @@ def create_or_replace_card_certificates(card_id, certificates):
     finally:
         cursor.close()
         connection.close()
+
     return
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -366,9 +385,19 @@ def prepare_certificate_field(key, value):
     if key in ['created_at', 'closed_at', 'new_closed_at']:
         if value != '':
             result = datetime.datetime.strptime(value, '%d.%m.%Y')
-            print(result)
         else:
             result = None
+
+    return result
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+def prepare_value(value):
+    result = value.strip()
+
+    for str in [ 'Состояние класса', 'Состояние СвУБ' ]:
+        result = re.sub('{0}\:\s+'.format(str), '', result, flags=re.M | re.I)
+    result = re.sub('<\/?b>', '', result, flags=re.M | re.I)
 
     return result
 
@@ -377,8 +406,6 @@ def prepare_certificate_field(key, value):
 def parse_card_certificates_by_card_identifier(card_identifier, card_id=None):
     if card_id is None:
         card_id = get_or_create_card(card_identifier)
-
-    db_columns = [ 'e_cert', 'type', 'name', 'code', 'created_at', 'closed_at', 'new_closed_at', 'state' ]
 
     url = 'https://lk.rs-class.org/regbook/status?fleet_id={0}'.format(card_identifier)
     page = urlopen(url)
@@ -390,12 +417,24 @@ def parse_card_certificates_by_card_identifier(card_identifier, card_id=None):
     matches = re.findall(r"jsonString\s\=\s(.+);", script.text.strip().replace('],]', ']]'), flags=re.M)
     data = json.loads(matches[0].strip())
 
-#     aaDataV1 = data['aaDataV1']
-#     status = [ aaDataV1[len(aaDataV1)-2], aaDataV1[len(aaDataV1)-1] ]
-#
-#     aaDataV2 = data['aaDataV2']
-#     contacts = aaDataV2
+    aaDataV1 = data['aaDataV1']
+    card_states = {
+        'card_id': card_id,
+        'class': prepare_value(aaDataV1[len(aaDataV1)-2][1]),
+        'form_8_1_3': prepare_value(aaDataV1[len(aaDataV1)-1][1])
+    }
+    create_or_replace_card_states(card_id, [ card_states ])
 
+    card_contacts = {
+        'card_id': card_id,
+        'operator': prepare_value(data['aaDataV2'][0][2]),
+        'address': prepare_value(data['aaDataV2'][2][2]),
+        'email': prepare_value(data['aaDataV2'][3][2]),
+        'cite': prepare_value(data['aaDataV2'][4][2])
+    }
+    create_or_replace_card_contacts(card_id, [ card_contacts ])
+
+    db_columns = [ 'e_cert', 'type', 'name', 'code', 'created_at', 'closed_at', 'new_closed_at', 'state' ]
     item_index = 0; card_certificates = list()
     for item in data['aaDataS0']:
         certificate = { 'card_id': card_id }; db_column_index = 0; column_index = 0
@@ -452,7 +491,6 @@ def parse_card_by_filters(filters, level=1):
             action = matches[0][0]
             identifier = matches[0][1]
             with_status = with_status or (action == 'status')
-            print(action, identifier, with_status)
             if action != 'status' and action != 'vessel':
                 print('ЕСТЬ ЕЩЕ ССЫЛКА ДЛЯ ПАРСИНГА', href)
 
@@ -471,7 +509,7 @@ print_start_status('Начало работы скрипта', 0)
 
 if sys.argv[1] == '1':
     test_start_time = datetime.datetime.now()
-    print_start_status('Спарсить тестовые карточки')
+    print_start_status('Спарсить тестовые карточки по номеру ИМО')
     index = 0
     for identifier in ['1017605', '990745']:
         card_time_start = datetime.datetime.now()
@@ -483,7 +521,7 @@ if sys.argv[1] == '1':
 
 elif sys.argv[1] == '2':
     test_start_time = datetime.datetime.now()
-    print_start_status('Сравнить карточки с сайта с карточками из БД')
+    print_start_status('Сравнить тестовые карточки с сайта с карточками из БД')
     index = 0
     for identifier in ['1017605', '990745']:
         card_time_start = datetime.datetime.now()

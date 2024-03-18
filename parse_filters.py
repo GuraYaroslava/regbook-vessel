@@ -1,6 +1,7 @@
 from bs4 import BeautifulSoup
 from urllib.request import urlopen
 
+from decouple import config
 import re
 import sys
 import datetime
@@ -9,14 +10,25 @@ import mysql.connector
 
 # ----------------------------------------------------------------------------------------------------------------------
 
+def get_db_connection(with_db=True):
+    host = config('DB_HOST')
+    user = config('DB_USERNAME')
+    password = config('DB_PASSWORD')
+    database = config('DB_DATABASE') if with_db else ''
+
+    return mysql.connector.connect(host=host, user=user, password=password, database=database)
+
+# ----------------------------------------------------------------------------------------------------------------------
+
 # Удалить существующую БД, если есть и создать новую со всеми таблицами
 def init_schema():
-    connection = mysql.connector.connect(host='localhost', user='root', password='root')
+    database = config('DB_DATABASE')
+    connection = get_db_connection()
     cursor = connection.cursor()
 
     try:
-        cursor.execute('DROP DATABASE IF EXISTS regbook')
-        cursor.execute('CREATE DATABASE IF NOT EXISTS regbook')
+        cursor.execute('DROP DATABASE IF EXISTS {}'.format(database))
+        cursor.execute('CREATE DATABASE IF NOT EXISTS {}'.format(database))
 
         with open('migrations/init_schema.sql', encoding='utf8') as source:
             for result in cursor.execute(source.read(), multi=True):
@@ -45,7 +57,7 @@ class Filter:
     # Добавить записть в таблицу данного фильтра
     # @param dict values
     def add_row(self, values):
-        connection = mysql.connector.connect(host='localhost', user='root', password='root', database='regbook')
+        connection = get_db_connection()
         cursor = connection.cursor(prepared=True)
 
         try:
@@ -136,13 +148,13 @@ def print_end_status(start_datetime, level=1, caption='Завершено'):
 total_start_time = datetime.datetime.now()
 print_start_status('Начало работы скрипта', 0)
 
-if sys.argv[1] == '1':
+if len(sys.argv) >= 2 and sys.argv[1] == '1':
     schema_start_time = datetime.datetime.now()
     print_start_status('Создать схему БД')
     init_schema()
     print_end_status(schema_start_time)
 
-if sys.argv[2] == '1':
+if len(sys.argv) >= 3 and sys.argv[2] == '1':
     filter_start_time = datetime.datetime.now()
     print_start_status('Спарсить фильтры')
     filters = [
