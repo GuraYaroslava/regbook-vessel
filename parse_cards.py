@@ -1,8 +1,8 @@
 from bs4 import BeautifulSoup
 import requests
 from urllib.request import urlopen
+from decouple import config
 import json
-
 import re
 import sys
 import csv
@@ -563,16 +563,13 @@ elif sys.argv[1] == '4':
 elif sys.argv[1] == '5':
     test_start_time = datetime.datetime.now()
     print_start_status('Спарсить карточки по фильтрам из БД')
-#     filters = [
-#         Filter('Города', 'gorodRegbook', 'cities', [ 'identifier', 'name', 'name_eng', 'country_ru' ], 'filter_city_identifier'),
-#         Filter('Страны', 'countryId', 'countries', [ 'identifier', 'name', 'name_eng' ], 'filter_country_identifier'),
-#         Filter('Статистические группы судов', 'statgr', 'types', [ 'identifier', 'code', 'name', 'name_eng' ], 'filter_type_identifier'),
-#         Filter('Ледовые категории', 'icecat', 'classes', [ 'identifier', 'name' ], 'filter_class_identifier')
-#     ]
-
     filters = [
+        Filter('Города', 'gorodRegbook', 'cities', [ 'identifier', 'name', 'name_eng', 'country_ru' ], 'filter_city_identifier'),
         Filter('Страны', 'countryId', 'countries', [ 'identifier', 'name', 'name_eng' ], 'filter_country_identifier'),
+        Filter('Статистические группы судов', 'statgr', 'types', [ 'identifier', 'code', 'name', 'name_eng' ], 'filter_type_identifier'),
+        Filter('Ледовые категории', 'icecat', 'classes', [ 'identifier', 'name' ], 'filter_class_identifier')
     ]
+
     for filter in filters:
         start_time = datetime.datetime.now()
         print_start_status('Фильтр '+filter.ru_name.upper(), 2)
