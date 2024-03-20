@@ -99,16 +99,15 @@ CREATE TABLE `cards` (
 DROP TABLE IF EXISTS `cards_properties`;
 
 CREATE TABLE `cards_properties` (
-    `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
     `card_id` int(10) unsigned NOT NULL COMMENT 'Карточка судна',
-    `property_id` int(10) unsigned DEFAULT NULL COMMENT 'Характеристика',
+    `property_id` int(10) unsigned NOT NULL COMMENT 'Характеристика',
     `property_value` TEXT COLLATE utf8_unicode_ci NOT NULL COMMENT 'Значение характеристики',
     `updated_at` timestamp NULL DEFAULT NULL,
-    PRIMARY KEY (`id`),
+    PRIMARY KEY (`card_id`, `property_id`),
     KEY `cards_properties_card_id_foreign` (`card_id`),
     CONSTRAINT `cards_properties_card_id_foreign` FOREIGN KEY (`card_id`) REFERENCES `cards` (`id`) ON DELETE CASCADE,
     KEY `cards_properties_property_id_foreign` (`property_id`),
-    CONSTRAINT `cards_properties_property_id_foreign` FOREIGN KEY (`property_id`) REFERENCES `properties` (`id`) ON DELETE SET NULL
+    CONSTRAINT `cards_properties_property_id_foreign` FOREIGN KEY (`property_id`) REFERENCES `properties` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci COMMENT='Характеристики судна';
 
 /* ------------------------------------------------------------------------------------------------------------------ */

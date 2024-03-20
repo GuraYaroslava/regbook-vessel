@@ -2,6 +2,7 @@ from bs4 import BeautifulSoup
 import requests
 from urllib.request import urlopen
 from decouple import config
+from threading import Thread
 import json
 import re
 import sys
@@ -24,13 +25,49 @@ def get_db_connection():
 
 class Card:
     def __init__(self, identifier):
+        self.id = None
         self.identifier = identifier
+
+    def get(self):
+        connection = get_db_connection()
+        cursor = connection.cursor(prepared=True)
+
+        try:
+            cursor.execute('SELECT id FROM cards WHERE identifier = %s', (self.identifier,))
+            results = cursor.fetchall()
+            if cursor.rowcount > 0:
+                self.id = results[0][0]
+        except Exception as e:
+            print('[card.get]', e)
+        finally:
+            cursor.close()
+            connection.close()
+
+        return self.id
+
+    def create(self):
+        if self.id is not None:
+            return self.id
+
+        connection = get_db_connection()
+        cursor = connection.cursor(prepared=True)
+
+        try:
+            cursor.execute('INSERT INTO cards (identifier) VALUES (%s)', (self.identifier,))
+            self.id = cursor.lastrowid
+            connection.commit()
+        except Exception as e:
+            print('[card.create]', e)
+        finally:
+            cursor.close()
+            connection.close()
+
+        return self.id
 
     # Получить характеристики из БД
     def get_data(self):
         connection = get_db_connection()
         cursor = connection.cursor(prepared=True)
-
         try:
             sql = """
                 select
@@ -46,10 +83,10 @@ class Card:
                   cards.identifier = %s
                 order by group_properties.id, properties.id;
             """
-
             cursor.execute(sql, (self.identifier,))
             result = cursor.fetchall()
-
+        except Exception as e:
+            print('[card.get_data]', e)
         finally:
             cursor.close()
             connection.close()
@@ -60,7 +97,7 @@ class Card:
     def cmp_with_cite(self):
         db_card = self.get_data()
 
-        url = 'https://lk.rs-class.org/regbook/vessel?fleet_id={0}&a=print'.format(self.identifier)
+        url = f'https://lk.rs-class.org/regbook/vessel?fleet_id={self.identifier}&a=print'
         page = urlopen(url)
         html = page.read().decode('utf-8')
         soup = BeautifulSoup(html, 'html.parser')
@@ -93,7 +130,7 @@ class Card:
                 is_exist = is_exist or equality
 
             if is_exist == False:
-                print_start_status('Карточка #'+identifier+': совпадение не найдено', 3)
+                print_start_status('Карточка #'+self.identifier+': совпадение не найдено', 3)
 
             success = success and is_exist
 
@@ -103,9 +140,12 @@ class Card:
 
     # Выгрузить характеристики из БД в файл формата .csv
     def export(self):
-        csv_writer = csv.writer(open('cards/'+self.identifier+'.csv', 'w'))
+        file = open('cards/card_'+self.identifier+'.csv', 'w')
+        csv_writer = csv.writer(file)
         for row in self.get_data():
+            print(self.identifier, row)
             csv_writer.writerow(row)
+        file.close()
 
         return
 
@@ -125,12 +165,14 @@ class Filter:
         cursor = connection.cursor(prepared=True)
 
         try:
-            sql = """
-                select `{0}` as name, `{1}` as field, identifier as value from filter_{2} order by id
-            """.format(self.cite_name, self.db_relationship, self.db_name)
+            sql = f"""
+                select '{self.cite_name}' as name, '{self.db_relationship}' as field, identifier as value
+                from filter_{self.db_name} order by id
+            """
             cursor.execute(sql, ())
             result = cursor.fetchall()
-
+        except Exception as e:
+            print('[filter.get_list]', e)
         finally:
             cursor.close()
             connection.close()
@@ -139,53 +181,113 @@ class Filter:
 
 # ----------------------------------------------------------------------------------------------------------------------
 
+class Group:
+    def __init__(self, name):
+        self.id = None
+        self.name = name
+
+    def get(self):
+        connection = get_db_connection()
+        cursor = connection.cursor(prepared=True)
+
+        try:
+            cursor.execute('SELECT id FROM group_properties WHERE name = %s', (self.name,))
+            results = cursor.fetchall()
+
+            if cursor.rowcount > 0:
+                self.id = results[0][0]
+        except Exception as e:
+            print('[group.get]', e)
+        finally:
+            cursor.close()
+            connection.close()
+
+        return self.id
+
+    def create(self):
+        if self.id is not None:
+            return self.id
+
+        connection = get_db_connection()
+        cursor = connection.cursor(prepared=True)
+
+        try:
+            cursor.execute('INSERT INTO group_properties (name) VALUES (%s)', (self.name,))
+            self.id = cursor.lastrowid
+            connection.commit()
+        except Exception as e:
+            print('[card.create]', e)
+        finally:
+            cursor.close()
+            connection.close()
+
+        return self.id
+
 # Сохранить в БД, если группа характеристик новая, вернуть id группы характеристик
 def get_or_create_group(name):
-    group_id = None
+    group = Group(name)
+    group_id = group.get()
 
-    connection = get_db_connection()
-    cursor = connection.cursor(prepared=True)
-
-    try:
-        cursor.execute('SELECT id FROM group_properties WHERE name = %s', (name,))
-        results = cursor.fetchall()
-
-        if cursor.rowcount == 0:
-            cursor.execute('INSERT INTO group_properties (name) VALUES (%s)', (name,))
-            group_id = cursor.lastrowid
-            connection.commit()
-        else:
-            group_id = results[0][0]
-
-    finally:
-        cursor.close()
-        connection.close()
+    if group_id == None:
+        try:
+            group_id = group.create()
+        except e:
+            group_id = group.get()
 
     return group_id
 
 # ----------------------------------------------------------------------------------------------------------------------
 
+class Property:
+    def __init__(self, name, group_id):
+        self.id = None
+        self.name = name
+        self.group_id = group_id
+
+    def get(self):
+        connection = get_db_connection()
+        cursor = connection.cursor(prepared=True)
+
+        try:
+            cursor.execute('SELECT id FROM properties WHERE name = %s AND group_id = %s', (self.name, self.group_id))
+            results = cursor.fetchall()
+
+            if cursor.rowcount > 0:
+                self.id = results[0][0]
+        except Exception as e:
+            print('[property.get]', e)
+        finally:
+            cursor.close()
+            connection.close()
+
+        return self.id
+
+    def create(self):
+        connection = get_db_connection()
+        cursor = connection.cursor(prepared=True)
+
+        try:
+            cursor.execute('INSERT INTO properties (name, group_id) VALUES (%s, %s)', (self.name, self.group_id))
+            self.id = cursor.lastrowid
+            connection.commit()
+        except Exception as e:
+            print('[property.create]', e)
+        finally:
+            cursor.close()
+            connection.close()
+
+        return self.id
+
 # Сохранить в БД, если характеристика новая, вернуть id характеристики
 def get_or_create_property(name, group_id):
-    property_id = None
+    property = Property(name, group_id)
+    property_id = property.get()
 
-    connection = get_db_connection()
-    cursor = connection.cursor(prepared=True)
-
-    try:
-        cursor.execute('SELECT id FROM properties WHERE name = %s AND group_id = %s', (name, group_id))
-        results = cursor.fetchall()
-
-        if cursor.rowcount == 0:
-            cursor.execute('INSERT INTO properties (name, group_id) VALUES (%s, %s)', (name, group_id))
-            property_id = cursor.lastrowid
-            connection.commit()
-        else:
-            property_id = results[0][0]
-
-    finally:
-        cursor.close()
-        connection.close()
+    if property_id == None:
+        try:
+            property_id = property.create()
+        except:
+            property_id = property.get()
 
     return property_id
 
@@ -193,25 +295,14 @@ def get_or_create_property(name, group_id):
 
 # Сохранить в БД, если карточка судна новая, вернуть id карточки судна
 def get_or_create_card(identifier):
-    card_id = None
+    card = Card(identifier)
+    card_id = card.get()
 
-    connection = get_db_connection()
-    cursor = connection.cursor(prepared=True)
-
-    try:
-        cursor.execute('SELECT id FROM cards WHERE identifier = %s', (identifier,))
-        results = cursor.fetchall()
-
-        if cursor.rowcount == 0:
-            cursor.execute('INSERT INTO cards (identifier) VALUES (%s)', (identifier,))
-            card_id = cursor.lastrowid
-            connection.commit()
-        else:
-            card_id = results[0][0]
-
-    finally:
-        cursor.close()
-        connection.close()
+    if card_id == None:
+        try:
+            card_id = card.create()
+        except:
+            card_id = card.get()
 
     return card_id
 
@@ -234,20 +325,14 @@ def create_or_update_card_property(property):
     cursor = connection.cursor(prepared=True)
 
     try:
-        sql = 'SELECT id FROM cards_properties WHERE card_id = %s AND property_id = %s'
-        cursor.execute(sql, (card_id, property_id))
-        result = cursor.fetchone()
-
-        if result is None:
-            sql = 'INSERT INTO cards_properties (card_id, property_id, property_value, updated_at) VALUES (%s, %s, %s, %s)'
-            cursor.execute(sql, (card_id, property_id, property_value, ts))
-        else:
-            id = result[0]
-            sql = 'UPDATE cards_properties SET property_value = %s, updated_at = %s WHERE id = %s'
-            cursor.execute(sql, (property_value, ts, id))
-
+        sql = """
+            INSERT INTO cards_properties (card_id, property_id, property_value, updated_at) VALUES (%s, %s, %s, %s)
+            ON DUPLICATE KEY UPDATE property_value = %s, updated_at = %s
+        """
+        cursor.execute(sql, (card_id, property_id, property_value, ts, property_value, ts))
         connection.commit()
-
+    except Exception as e:
+        print('[create_or_update_card_property]', e)
     finally:
         cursor.close()
         connection.close()
@@ -277,9 +362,9 @@ def create_or_update_card_filters(card_id, filters):
             else:
                 sql = 'UPDATE cards_filters SET {0} = %s WHERE card_id = %s'.format(filter['field'])
                 cursor.execute(sql, (filter['value'], card_id))
-
         connection.commit()
-
+    except Exception as e:
+        print('[create_or_update_card_filters]', e)
     finally:
         cursor.close()
         connection.close()
@@ -302,17 +387,18 @@ def create_or_replace_card_(card_id, records, db_name):
     cursor = connection.cursor(prepared=True)
 
     try:
-        cursor.execute('DELETE FROM {0} WHERE card_id = %s'.format(db_name), (card_id,))
+        cursor.execute(f'DELETE FROM {db_name} WHERE card_id = %s order by id', (card_id,))
+        connection.commit()
         for record in records:
             columns = list(record.keys())
             query_columns = ', '.join(columns)
             query_values = ', '.join(map(lambda column: '%s', columns))
             params = list(record.values())
-            sql = 'INSERT INTO {0} ({1}) VALUES ({2})'.format(db_name, query_columns, query_values)
+            sql = f'INSERT INTO {db_name} ({query_columns}) VALUES ({query_values})'
             cursor.execute(sql, params)
-
-        connection.commit()
-
+            connection.commit()
+    except Exception as e:
+        print(f'[create_or_replace_card_{db_name}]', e)
     finally:
         cursor.close()
         connection.close()
@@ -331,7 +417,12 @@ def print_end_status(start_datetime, level=1, caption='Завершено'):
     end_datetime = datetime.datetime.now()
     duration = (end_datetime - start_datetime).total_seconds()
     separator = '---' * level + '>'
-    print('[{}]'.format(datetime.datetime.now()), separator, caption, duration, '(s)')
+    if duration // 60 <= 1:
+        print('[{}]'.format(datetime.datetime.now()), separator, caption, round(duration, 2), '(s)')
+    else:
+        duration = duration / 60.0
+        print('[{}]'.format(datetime.datetime.now()), separator, caption, round(duration, 2), '(m)')
+
     return
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -340,7 +431,7 @@ def print_end_status(start_datetime, level=1, caption='Завершено'):
 def parse_card_by_identifier(card_identifier, filters=None, with_status=False):
     card_id = get_or_create_card(card_identifier)
 
-    url = 'https://lk.rs-class.org/regbook/vessel?fleet_id={0}&a=print'.format(card_identifier)
+    url = f'https://lk.rs-class.org/regbook/vessel?fleet_id={card_identifier}&a=print'
     page = urlopen(url)
     html = page.read().decode('utf-8')
     soup = BeautifulSoup(html, 'html.parser')
@@ -407,7 +498,7 @@ def parse_card_certificates_by_card_identifier(card_identifier, card_id=None):
     if card_id is None:
         card_id = get_or_create_card(card_identifier)
 
-    url = 'https://lk.rs-class.org/regbook/status?fleet_id={0}'.format(card_identifier)
+    url = f'https://lk.rs-class.org/regbook/status?fleet_id={card_identifier}'
     page = urlopen(url)
     html = page.read().decode('utf-8')
     soup = BeautifulSoup(html, 'html.parser')
@@ -465,10 +556,9 @@ def parse_card_certificates_by_card_identifier(card_identifier, card_id=None):
 #   value,  # значение фильтра
 #   field   # название поля под фильтр в таблице связей cards_filters
 # ], ]
-def parse_card_by_filters(filters, level=1):
+def parse_card_by_filters(filters, level=1, thead=-1):
     data = {}
-    for filter in filters:
-        data[filter['name']] = filter['value']
+    for filter in filters: data[filter['name']] = filter['value']
 
     url = 'https://lk.rs-class.org/regbook/regbookVessel'
     headers = { 'Content-Type': 'application/x-www-form-urlencoded' }
@@ -495,7 +585,7 @@ def parse_card_by_filters(filters, level=1):
                 print('ЕСТЬ ЕЩЕ ССЫЛКА ДЛЯ ПАРСИНГА', href)
 
         card_time_start = datetime.datetime.now()
-        print_start_status('[{0}] Карточка #{1}'.format(tr_index+1, identifier), level)
+        print_start_status(f'[{tr_index+1}] Карточка #{identifier}', level)
         parse_card_by_identifier(identifier, filters, with_status)
         print_end_status(card_time_start, level)
         tr_index += 1
@@ -504,12 +594,74 @@ def parse_card_by_filters(filters, level=1):
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-total_start_time = datetime.datetime.now()
-print_start_status('Начало работы скрипта', 0)
+def sequential(trs, thead, filters, level):
+    thead_time_start = datetime.datetime.now()
+    thead_caption = f'[thead #{thead}][{len(trs)} шт]'
+    for tr in trs:
+        tds = tr.find_all('td')
+        tr_length = len(tds)
+        if tr_length == 0: continue
+        last_column = tds[tr_length-1]
 
-if sys.argv[1] == '1':
+        with_status = False; identifier = None
+        links = last_column.find_all('a')
+        for link in links:
+            href = link.get('href')
+            matches = re.findall(r'(vessel|status)\?fleet_id=(\d+)', href)
+            action = matches[0][0]
+            identifier = matches[0][1]
+            with_status = with_status or (action == 'status')
+            if action != 'status' and action != 'vessel':
+                print('ЕСТЬ ЕЩЕ ССЫЛКА ДЛЯ ПАРСИНГА', href)
+
+        card_time_start = datetime.datetime.now()
+        caption = f'[thead #{thead}] Карточка #{identifier}'
+#         print_start_status(caption, level)
+        parse_card_by_identifier(identifier, filters, with_status)
+        print_end_status(card_time_start, level, caption)
+    print_end_status(thead_time_start, level+1, thead_caption)
+
+    return
+
+# Спарсить все карточки, удовлетворяющие условиям соответствующих фильтров
+# filters [ [
+#   name,   # название фильтра для составление запроса
+#   value,  # значение фильтра
+#   field   # название поля под фильтр в таблице связей cards_filters
+# ], ]
+def parse_card_by_filters__threads(filters, level=1, force=False):
+    data = {}
+    for filter in filters: data[filter['name']] = filter['value']
+
+    url = 'https://lk.rs-class.org/regbook/regbookVessel'
+    headers = { 'Content-Type': 'application/x-www-form-urlencoded' }
+    response = requests.post(url, data=data, headers=headers)
+    html = response.text
+    soup = BeautifulSoup(html, 'html.parser')
+
+    trs = soup.find_all('tr'); n_proc = 10; n_trs = len(trs)
+    n = int(n_trs / n_proc) if n_trs % n_proc == 0 else int(n_trs // n_proc + 1)
+    if n_trs > 0:
+#         print_start_status(', '.join(map(lambda x: x['name'] + ':' + x['value'], filters)), level)
+        print_start_status(f'Max кол-во потоков: {n_proc} | Кол-во карточек: {n_trs} | Кол-во карточек на поток: {n}', level)
+
+    if force == True:
+        threads = []; thead_index = 1
+        for trs_chunk in [trs[i:i+n] for i in range(0, n_trs, n)]:
+            t = Thread(target=sequential, args=(trs_chunk, thead_index, filters, level)); thead_index += 1
+            threads.append(t)
+            t.start()
+
+        for t in threads:
+            t.join()
+
+    return n_trs
+
+# ======================================================================================================================
+
+def command__parse_test_cards_by_identifier(caption='Спарсить тестовые карточки идентификатору'):
     test_start_time = datetime.datetime.now()
-    print_start_status('Спарсить тестовые карточки по номеру ИМО')
+    print_start_status(caption)
     index = 0
     for identifier in ['1017605', '990745']:
         card_time_start = datetime.datetime.now()
@@ -519,33 +671,37 @@ if sys.argv[1] == '1':
         index += 1
     print_end_status(test_start_time)
 
-elif sys.argv[1] == '2':
+# ----------------------------------------------------------------------------------------------------------------------
+
+def command__cmp_test_cards_with_cite_cards(caption='Сравнить тестовые карточки с сайта с карточками из БД'):
     test_start_time = datetime.datetime.now()
-    print_start_status('Сравнить тестовые карточки с сайта с карточками из БД')
+    print_start_status(caption)
     index = 0
     for identifier in ['1017605', '990745']:
         card_time_start = datetime.datetime.now()
         print_start_status('[{0}] Карточка #{1}'.format(index+1, identifier), 2)
-        card = Card(identifier)
-        card.cmp_with_cite()
+        card = Card(identifier); card.cmp_with_cite()
         print_end_status(card_time_start, 2)
         index += 1
     print_end_status(test_start_time)
 
-elif sys.argv[1] == '3':
+# ----------------------------------------------------------------------------------------------------------------------
+
+def command__export_test_cards(caption='Выгрузить тестовые карточки из БД в формате .csv'):
     test_start_time = datetime.datetime.now()
-    print_start_status('Выгрузить тестовые карточки из БД в формате .csv')
+    print_start_status(caption)
     index = 0
-    for identifier in ['1017605', '990745']:
+    for identifier in ['990745', '1017605']:
         card_time_start = datetime.datetime.now()
         print_start_status('[{0}] Карточка #{1}'.format(index+1, identifier), 2)
-        card = Card(identifier)
-        card.export()
+        card = Card(identifier); card.export()
         print_end_status(card_time_start, 2)
         index += 1
     print_end_status(test_start_time)
 
-elif sys.argv[1] == '4':
+# ----------------------------------------------------------------------------------------------------------------------
+
+def command__parse_cards_by_custom_filters():
 #     print_start_status('Спарсить карточки по фильтру: Россия, Владивосток, Научно-исследовательские')
 #     parse_card_by_filters([
 #           { 'name': 'gorodRegbook', 'value': '0E224C4F-DE2B-4DD6-AB9B-B6BBABB7B7C4', 'field': 'filter_city_identifier' },
@@ -560,16 +716,17 @@ elif sys.argv[1] == '4':
         { 'name': 'statgr', 'value': 'F188B3EF-E54D-D82E-6F79-AD7D9A4A4CCD', 'field': 'filter_type_identifier' },
     ], 2)
 
-elif sys.argv[1] == '5':
+# ----------------------------------------------------------------------------------------------------------------------
+
+def command__parse_cards_by_db_filters(caption='Спарсить карточки по фильтрам из БД'):
     test_start_time = datetime.datetime.now()
-    print_start_status('Спарсить карточки по фильтрам из БД')
+    print_start_status(caption)
     filters = [
         Filter('Города', 'gorodRegbook', 'cities', [ 'identifier', 'name', 'name_eng', 'country_ru' ], 'filter_city_identifier'),
         Filter('Страны', 'countryId', 'countries', [ 'identifier', 'name', 'name_eng' ], 'filter_country_identifier'),
         Filter('Статистические группы судов', 'statgr', 'types', [ 'identifier', 'code', 'name', 'name_eng' ], 'filter_type_identifier'),
         Filter('Ледовые категории', 'icecat', 'classes', [ 'identifier', 'name' ], 'filter_class_identifier')
     ]
-
     for filter in filters:
         start_time = datetime.datetime.now()
         print_start_status('Фильтр '+filter.ru_name.upper(), 2)
@@ -578,4 +735,106 @@ elif sys.argv[1] == '5':
         print_end_status(start_time)
     print_end_status(test_start_time)
 
-print_end_status(total_start_time, 0)
+# ----------------------------------------------------------------------------------------------------------------------
+
+def command__parse_cards_by_custom_filters__threads():
+    print_start_status('Спарсить карточки ПОТОКАМИ по фильтру: Панама, Панама')
+    parse_card_by_filters__threads([
+        { 'name': 'gorodRegbook', 'value': 'DD1212EB-494D-41E4-A54A-B914845826A1', 'field': 'filter_city_identifier' },
+        { 'name': 'countryId', 'value': 'D3339EB0-B3A8-461F-8493-DE358CAB09C7', 'field': 'filter_country_identifier' },
+    ], 2)
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+def command__parse_cards_by_db_filters__threads(caption='Спарсить карточки ПОТОКАМИ по фильтрам из БД'):
+    filters = []
+    match sys.argv[2]:
+        case 'cities':
+            filters = [Filter('Города', 'gorodRegbook', 'cities', [ 'identifier', 'name', 'name_eng', 'country_ru' ], 'filter_city_identifier')]
+        case 'countries':
+            filters = [Filter('Страны', 'countryId', 'countries', [ 'identifier', 'name', 'name_eng' ], 'filter_country_identifier')]
+        case 'types':
+            filters = [Filter('Статистические группы судов', 'statgr', 'types', [ 'identifier', 'code', 'name', 'name_eng' ], 'filter_type_identifier')]
+        case 'classes':
+            filters = [Filter('Ледовые категории', 'icecat', 'classes', [ 'identifier', 'name' ], 'filter_class_identifier')]
+        case 'all':
+            filters = [
+                Filter('Города', 'gorodRegbook', 'cities', [ 'identifier', 'name', 'name_eng', 'country_ru' ], 'filter_city_identifier'),
+                Filter('Страны', 'countryId', 'countries', [ 'identifier', 'name', 'name_eng' ], 'filter_country_identifier'),
+                Filter('Статистические группы судов', 'statgr', 'types', [ 'identifier', 'code', 'name', 'name_eng' ], 'filter_type_identifier'),
+                Filter('Ледовые категории', 'icecat', 'classes', [ 'identifier', 'name' ], 'filter_class_identifier')
+            ]
+        case _:
+            print(f'Фильтра "{sys.argv[2]}" не существует')
+
+    test_start_time = datetime.datetime.now()
+    print_start_status(caption)
+    for filter in filters:
+        start_time = datetime.datetime.now()
+        filter_values = filter.get_list()
+        caption = f'Фильтр {filter.ru_name.upper()} ({filter_values} шт. значений)'
+        print_start_status(caption, 2)
+        n_cards = 0
+        for item in filter_values:
+            n_cards += parse_card_by_filters__threads([ { 'name': item[0], 'field': item[1], 'value': item[2] } ], 3)
+        print_end_status(start_time, 1, caption + f': {n_cards} шт. карточек')
+    print_end_status(test_start_time)
+
+# ======================================================================================================================
+
+commands = [
+    { 'code': '1', 'caption': 'Спарсить тестовые карточки по номеру ИМО' },
+    { 'code': '2', 'caption': 'Сравнить тестовые карточки с сайта с карточками из БД' },
+    { 'code': '3', 'caption': 'Выгрузить тестовые карточки из БД в формате .csv' },
+    { 'code': '4', 'caption': 'Спарсить карточки по фильтру: Панама, Панама, Нефтеналивные' },
+    { 'code': '5', 'caption': 'Спарсить карточки по фильтрам из БД' },
+    { 'code': '6', 'caption': 'Спарсить карточки ПОТОКАМИ по фильтру: Панама, Панама' },
+    { 'code': '7', 'caption': 'Спарсить карточки ПОТОКАМИ по фильтрам из БД' },
+]
+
+def main():
+    if len(sys.argv) < 2:
+        print('Укажите один из возможных режимов запуска скрипта:')
+        for command in commands:
+            code = command['code']
+            caption = command['caption']
+            print(f'{code} - {caption}')
+        return
+
+    if sys.argv[1] == '7' and len(sys.argv) < 3:
+        print('Укажите один из возможных вариантов фильтра карточек: cities, countries, types, classes, all.')
+        return
+
+    func_name = ''
+    match sys.argv[1]:
+        case '1':
+            func_name = 'command__parse_test_cards_by_identifier'
+        case '2':
+            func_name = 'command__cmp_test_cards_with_cite_cards'
+        case '3':
+            func_name = 'command__export_test_cards'
+        case '4':
+            func_name = 'command__parse_cards_by_custom_filters'
+        case '5':
+            func_name = 'command__parse_cards_by_db_filters'
+        case '6':
+            func_name = 'command__parse_cards_by_custom_filters__threads'
+        case '7':
+            func_name = 'command__parse_cards_by_db_filters__threads'
+        case _:
+            print(f'Команды с кодом "{sys.argv[1]}" не существует')
+            return
+
+    if func_name == '':
+        print(f'Команды с кодом "{sys.argv[1]}" не существует')
+        return
+
+    total_start_time = datetime.datetime.now()
+    print_start_status('Начало работы скрипта', 0)
+
+    eval(func_name + "()")
+
+    print_end_status(total_start_time, 0)
+
+if __name__ == "__main__":
+    main()

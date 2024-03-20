@@ -155,7 +155,7 @@ def print_end_status(start_datetime, level=1, caption='Завершено'):
     end_datetime = datetime.datetime.now()
     duration = (end_datetime - start_datetime).total_seconds()
     separator = '---' * level + '>'
-    print('[{}]'.format(datetime.datetime.now()), separator, caption+':', duration, '(s)')
+    print('[{}]'.format(datetime.datetime.now()), separator, caption+':', round(duration, 2), '(s)')
     return
 
 # ======================================================================================================================
@@ -167,7 +167,8 @@ init_filters = [
     { 'ru_name': 'Ледовые категории', 'cite_name': 'icecat', 'db_name': 'classes', 'db_columns': [ 'identifier', 'name' ] }
 ]
 
-filters = []; for args in init_filters: filters.append(Filter(args))
+filters = []
+for args in init_filters: filters.append(Filter(args))
 
 # ----------------------------------------------------------------------------------------------------------------------
 
