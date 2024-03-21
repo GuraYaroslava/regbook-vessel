@@ -1,0 +1,4 @@
+.idea
+.env
+__*
+exports/card_*
