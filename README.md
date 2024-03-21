@@ -23,7 +23,7 @@
 | 2  | Выписка                | [Ссылка на все характеристики судна](https://lk.rs-class.org/regbook/vessel?fleet_id=1017605&a=print)                   |
 | 3  | Статус / Свидетельства | [Ссылка на свидетельства / контакты / состояния класса и СвУБ](https://lk.rs-class.org/regbook/status?fleet_id=1017605) |
 
-![Схема БД](schema.png?raw=true "Схема БД")
+![Схема БД](resources/schema.png?raw=true "Схема БД")
 
 # Разработка
 
