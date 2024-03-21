@@ -1,76 +1,158 @@
 import sys
 import datetime
+import db_connector
+import multiprocessing
 
 from models.card import Card
 from models.parser import Parser
+from models.filter import Filter
 from models.card_parser import Card_Parser
 from models.logger import Logger
 
 
+def get_filters(mode=0):
+    init_filters = [
+        { 'ru_name': 'Города', 'cite_name': 'gorodRegbook', 'db_name': 'cities', 'db_columns': [ 'identifier', 'name', 'name_eng', 'country_ru' ] },
+        { 'ru_name': 'Страны', 'cite_name': 'countryId', 'db_name': 'countries', 'db_columns': [ 'identifier', 'name', 'name_eng' ] },
+        { 'ru_name': 'Статистические группы судов', 'cite_name': 'statgr', 'db_name': 'types', 'db_columns': [ 'identifier', 'code', 'name', 'name_eng' ] },
+        { 'ru_name': 'Ледовые категории', 'cite_name': 'icecat', 'db_name': 'classes', 'db_columns': [ 'identifier', 'name' ] }
+    ]
+
+    if mode == 1:
+        return init_filters
+
+    filters = []
+    for args in init_filters:
+        filter = Filter(); filter.set_attrs(args)
+        filters.append(filter)
+
+    return filters
+
 # ======================================================================================================================
 
+def command__init_schema(caption='Создать схему БД'):
+    Logger().print_start_status(caption); start_time = datetime.datetime.now()
+    db_connector.init_schema()
+    Logger().print_end_status(start_time)
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+def command__parse_filters(caption='Спарсить фильтры'):
+    Logger().print_start_status(caption); start_time = datetime.datetime.now()
+    filters = get_filters()
+    for filter in filters:
+        filter_start_time = datetime.datetime.now()
+        Logger().print_start_status('Фильтр '+filter.ru_name.upper(), 2)
+        filter.parse()
+        Logger().print_end_status(filter_start_time, 3)
+    Logger().print_end_status(start_time, 1, caption)
+
+    return
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+def command__parse_filters__threads(caption='Спарсить фильтры потоками'):
+    Logger().print_start_status(caption); start_time = datetime.datetime.now()
+    filters = get_filters()
+    for filter in filters:
+        filter.start()
+    # Подождем, пока все потоки завершат свою работу
+    for filter in filters:
+        filter.join()
+    for filter in filters:
+        Logger().print_start_status('Фильтр '+filter.ru_name.upper()+f': {filter.parse_duration()} (s)', 2)
+    Logger().print_end_status(start_time, 1, caption)
+
+    return
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+def sequential(filter_chunk, proc):
+    for filter_args in filter_chunk:
+        start_time = datetime.datetime.now()
+        filter = Filter(); filter.set_attrs(filter_args); filter.parse()
+        Logger().print_end_status(start_time, 2, f'[proc #{proc}] Фильтр '+filter.ru_name.upper())
+
+def command__parse_filters__multiprocess(caption='Спарсить фильтры мультипроцессорно'):
+    Logger().print_start_status(caption); start_time = datetime.datetime.now()
+
+    init_filters = get_filters(1)
+    n_proc = multiprocessing.cpu_count()
+    n_filter = len(init_filters)
+    n = int(n_filter / n_proc) if n_filter % n_proc == 0 else int(n_filter // n_proc + 1)
+    print(f'Кол-во ядер: {n_proc} |', f'Кол-во фильтров: {n_filter} |', f'Кол-во фильтров на ядро: {n}')
+
+    init = []; index = 1
+    for filter_chunk in [init_filters[i:i + n] for i in range(0, n_filter, n)]:
+        init.append((filter_chunk, index)); index += 1
+    with multiprocessing.Pool() as pool:
+       pool.starmap(sequential, init)
+    Logger().print_end_status(start_time, 1, caption)
+
+    return
+
+# ----------------------------------------------------------------------------------------------------------------------
+
 def command__parse_test_cards_by_identifier(caption='Спарсить тестовые карточки идентификатору'):
-    test_start_time = datetime.datetime.now()
-    Logger().print_start_status(caption)
-    index = 0
+    Logger().print_start_status(caption); start_time = datetime.datetime.now(); index = 0
     for identifier in ['1017605', '990745']:
-        card_time_start = datetime.datetime.now()
+        card_start_time = datetime.datetime.now()
         Logger().print_start_status('[{0}] Карточка #{1}'.format(index+1, identifier), 2)
         Card_Parser(identifier).parse()
-        Logger().print_end_status(card_time_start, 2)
-        index += 1
-    Logger().print_end_status(test_start_time)
+        Logger().print_end_status(card_start_time, 2); index += 1
+    Logger().print_end_status(start_time)
 
 # ----------------------------------------------------------------------------------------------------------------------
 
 def command__cmp_test_cards_with_cite_cards(caption='Сравнить тестовые карточки с сайта с карточками из БД'):
-    test_start_time = datetime.datetime.now()
-    Logger().print_start_status(caption)
-    index = 0
+    Logger().print_start_status(caption); start_time = datetime.datetime.now(); index = 0
     for identifier in ['1017605', '990745']:
-        card_time_start = datetime.datetime.now()
+        card_start_time = datetime.datetime.now()
         Logger().print_start_status('[{0}] Карточка #{1}'.format(index+1, identifier), 2)
-        card = Card(identifier); card.cmp_with_cite()
-        Logger().print_end_status(card_time_start, 2)
-        index += 1
-    Logger().print_end_status(test_start_time)
+        Card(identifier).cmp_with_cite()
+        Logger().print_end_status(card_start_time, 2); index += 1
+    Logger().print_end_status(start_time)
 
 # ----------------------------------------------------------------------------------------------------------------------
 
 def command__export_test_cards(caption='Выгрузить тестовые карточки из БД в формате .csv'):
-    test_start_time = datetime.datetime.now()
-    Logger().print_start_status(caption)
-    index = 0
+    Logger().print_start_status(caption); start_time = datetime.datetime.now(); index = 0
     for identifier in ['990745', '1017605']:
         card_time_start = datetime.datetime.now()
         Logger().print_start_status('[{0}] Карточка #{1}'.format(index+1, identifier), 2)
-        card = Card(identifier); card.export()
-        Logger().print_end_status(card_time_start, 2)
-        index += 1
-    Logger().print_end_status(test_start_time)
+        Card(identifier).export()
+        Logger().print_end_status(card_time_start, 2); index += 1
+    Logger().print_end_status(start_time)
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-def command__parse_cards_by_custom_filters():
-#     Logger().print_start_status('Спарсить карточки по фильтру: Россия, Владивосток, Научно-исследовательские')
-#     parse_card_by_filters([
-#           { 'name': 'gorodRegbook', 'value': '0E224C4F-DE2B-4DD6-AB9B-B6BBABB7B7C4', 'field': 'filter_city_identifier' },
-#           { 'name': 'countryId', 'value': '6CF1E5F4-2B6D-4DC6-836B-287154684870', 'field': 'filter_country_identifier' },
-#           { 'name': 'statgr', 'value': '47488F18-691C-AD5D-0A1C-9EA637E43848', 'field': 'filter_type_identifier' },
-#     ], 2)
+def command__parse_cards_by_custom_filters(mode=0):
+    caption = ''; params = []
 
-    Logger().print_start_status('Спарсить карточки по фильтру: Панама, Панама, Нефтеналивные')
-    Parser().parse([
-        { 'name': 'gorodRegbook', 'value': 'DD1212EB-494D-41E4-A54A-B914845826A1', 'field': 'filter_city_identifier' },
-        { 'name': 'countryId', 'value': 'D3339EB0-B3A8-461F-8493-DE358CAB09C7', 'field': 'filter_country_identifier' },
-        { 'name': 'statgr', 'value': 'F188B3EF-E54D-D82E-6F79-AD7D9A4A4CCD', 'field': 'filter_type_identifier' },
-    ], 2)
+    match mode:
+        case 0:
+            caption = 'Спарсить карточки по фильтру: Россия, Владивосток, Научно-исследовательские'
+            params = [
+                { 'name': 'gorodRegbook', 'value': '0E224C4F-DE2B-4DD6-AB9B-B6BBABB7B7C4', 'field': 'filter_city_identifier' },
+                { 'name': 'countryId', 'value': '6CF1E5F4-2B6D-4DC6-836B-287154684870', 'field': 'filter_country_identifier' },
+                { 'name': 'statgr', 'value': '47488F18-691C-AD5D-0A1C-9EA637E43848', 'field': 'filter_type_identifier' },
+            ]
+        case 1:
+            caption = 'Спарсить карточки по фильтру: Панама, Панама, Нефтеналивные'
+            params = [
+                { 'name': 'gorodRegbook', 'value': 'DD1212EB-494D-41E4-A54A-B914845826A1', 'field': 'filter_city_identifier' },
+                { 'name': 'countryId', 'value': 'D3339EB0-B3A8-461F-8493-DE358CAB09C7', 'field': 'filter_country_identifier' },
+                { 'name': 'statgr', 'value': 'F188B3EF-E54D-D82E-6F79-AD7D9A4A4CCD', 'field': 'filter_type_identifier' },
+            ]
+
+    Logger().print_start_status(caption); start_time = datetime.datetime.now()
+    Parser().parse(params, 2)
+    Logger().print_end_status(start_time)
 
 # ----------------------------------------------------------------------------------------------------------------------
 
 def command__parse_cards_by_db_filters(caption='Спарсить карточки по фильтрам из БД'):
-    test_start_time = datetime.datetime.now()
-    Logger().print_start_status(caption)
+    Logger().print_start_status(caption); start_time = datetime.datetime.now()
     filters = [
         Filter('Города', 'gorodRegbook', 'cities', [ 'identifier', 'name', 'name_eng', 'country_ru' ], 'filter_city_identifier'),
         Filter('Страны', 'countryId', 'countries', [ 'identifier', 'name', 'name_eng' ], 'filter_country_identifier'),
@@ -78,21 +160,22 @@ def command__parse_cards_by_db_filters(caption='Спарсить карточк�
         Filter('Ледовые категории', 'icecat', 'classes', [ 'identifier', 'name' ], 'filter_class_identifier')
     ]
     for filter in filters:
-        start_time = datetime.datetime.now()
+        filter_start_time = datetime.datetime.now()
         Logger().print_start_status('Фильтр '+filter.ru_name.upper(), 2)
         for row in filter.get_list():
             Parser().parse([ { 'name': row[0], 'field': row[1], 'value': row[2] } ], 3)
-        Logger().print_end_status(start_time)
-    Logger().print_end_status(test_start_time)
+        Logger().print_end_status(filter_start_time)
+    Logger().print_end_status(start_time)
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-def command__parse_cards_by_custom_filters__threads():
-    Logger().print_start_status('Спарсить карточки ПОТОКАМИ по фильтру: Панама, Панама')
+def command__parse_cards_by_custom_filters__threads(caption='Спарсить карточки ПОТОКАМИ по фильтру: Панама, Панама'):
+    Logger().print_start_status(caption); start_time = datetime.datetime.now()
     Parser().parse_with_threads([
         { 'name': 'gorodRegbook', 'value': 'DD1212EB-494D-41E4-A54A-B914845826A1', 'field': 'filter_city_identifier' },
         { 'name': 'countryId', 'value': 'D3339EB0-B3A8-461F-8493-DE358CAB09C7', 'field': 'filter_country_identifier' },
     ], 2, True)
+    Logger().print_end_status(start_time)
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -117,22 +200,25 @@ def command__parse_cards_by_db_filters__threads(caption='Спарсить кар
         case _:
             print(f'Фильтра "{sys.argv[2]}" не существует')
 
-    test_start_time = datetime.datetime.now()
-    Logger().print_start_status(caption)
+    Logger().print_start_status(caption); start_time = datetime.datetime.now()
     for filter in filters:
-        start_time = datetime.datetime.now()
+        filter_start_time = datetime.datetime.now()
         filter_values = filter.get_list()
         caption = f'Фильтр {filter.ru_name.upper()} ({filter_values} шт. значений)'
         Logger().print_start_status(caption, 2)
         n_cards = 0
         for item in filter_values:
             n_cards += Parser().parse_with_threads([ { 'name': item[0], 'field': item[1], 'value': item[2] } ], 3, True)
-        Logger().print_end_status(start_time, 1, caption + f': {n_cards} шт. карточек')
-    Logger().print_end_status(test_start_time)
+        Logger().print_end_status(filter_start_time, 1, caption + f': {n_cards} шт. карточек')
+    Logger().print_end_status(start_time)
 
 # ======================================================================================================================
 
 commands = [
+    { 'code': '0', 'caption': 'Создать схему БД' },
+    { 'code': '00', 'caption': 'Спарсить фильтры' },
+    { 'code': '000', 'caption': 'Спарсить фильтры потоками' },
+    { 'code': '0000', 'caption': 'Спарсить фильтры мультипроцессорно' },
     { 'code': '1', 'caption': 'Спарсить тестовые карточки по идентификатору' },
     { 'code': '2', 'caption': 'Сравнить тестовые карточки с сайта с карточками из БД' },
     { 'code': '3', 'caption': 'Выгрузить тестовые карточки из БД в формате .csv' },
@@ -157,6 +243,14 @@ def main():
 
     func_name = ''
     match sys.argv[1]:
+        case '0':
+            func_name = 'command__init_schema'
+        case '00':
+            func_name = 'command__parse_filters'
+        case '000':
+            func_name = 'command__parse_filters__threads'
+        case '0000':
+            func_name = 'command__parse_filters__multiprocess'
         case '1':
             func_name = 'command__parse_test_cards_by_identifier'
         case '2':
