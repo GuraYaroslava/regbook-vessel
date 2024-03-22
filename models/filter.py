@@ -86,7 +86,8 @@ class Filter(Thread):
 
             cursor.execute(sql, params)
             connection.commit()
-
+        except Exception as e:
+            print('[filter.add_record]', e)
         finally:
             cursor.close()
             connection.close()

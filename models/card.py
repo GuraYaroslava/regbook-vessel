@@ -39,8 +39,6 @@ class Card:
             cursor.execute('INSERT INTO cards (identifier) VALUES (%s)', (self.identifier,))
             self.id = cursor.lastrowid
             connection.commit()
-        except Exception as e:
-            print('[card.create]', e)
         finally:
             cursor.close()
             connection.close()
@@ -112,7 +110,7 @@ class Card:
                 else:
                     sql = 'UPDATE cards_filters SET {0} = %s WHERE card_id = %s'.format(filter['field'])
                     cursor.execute(sql, (filter['value'], card_id))
-            connection.commit()
+                connection.commit()
         except Exception as e:
             print('[create_or_update_card_filters]', e)
         finally:

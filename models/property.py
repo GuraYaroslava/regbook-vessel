@@ -32,8 +32,6 @@ class Property:
             cursor.execute('INSERT INTO properties (name, group_id) VALUES (%s, %s)', (self.name, self.group_id))
             self.id = cursor.lastrowid
             connection.commit()
-        except Exception as e:
-            print('[property.create]', e)
         finally:
             cursor.close()
             connection.close()
@@ -47,7 +45,7 @@ class Property:
         if property_id == None:
             try:
                 property_id = self.create()
-            except:
+            except Exception as e:
                 property_id = self.get()
 
         return property_id

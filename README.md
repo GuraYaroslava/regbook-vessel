@@ -54,32 +54,61 @@ pip install python-decouple
 
 ---
 
-Запуск парсера фильтров, где первый аргумент, если 1, то пересоздает схему БД, второй - стартует парсиг фильтров:
-
-```
-python3 parse_filters.py 1 0
-```
-
----
-
 Запуск парсера карточек, где первый аргумент, если
-1 - Спарсить тестовые карточки по номеру ИМО
-2 - Сравнить тестовые карточки с сайта с карточками из БД
-3 - Выгрузить тестовые карточки из БД в формате .csv
-4 - Спарсить карточки по фильтру: Панама, Панама, Нефтеналивные
-5 - Спарсить карточки по фильтрам из БД
-6 - Спарсить карточки ПОТОКАМИ по фильтру: Панама, Панама
-7 - Спарсить карточки ПОТОКАМИ по фильтрам из БД
+
+- 1 - Создать схему БД
+- 2 - Спарсить фильтры
+- 3 - Спарсить фильтры потоками
+- 4 - Спарсить фильтры мультипроцессорно
+- 5 - Спарсить тестовые карточки по идентификатору
+- 6 - Сравнить тестовые карточки с сайта с карточками из БД
+- 7 - Выгрузить тестовые карточки из БД в формате .csv
+- 8 - Спарсить карточки по фильтру: Панама, Панама, Нефтеналивные
+- 9 - Спарсить карточки по фильтрам из БД
+- 10 - Спарсить карточки ПОТОКАМИ по фильтру: Панама, Панама
+- 11 - Спарсить карточки ПОТОКАМИ по фильтрам из БД
 
 ```
-python3 parse_cards.py 1
+python3 run.py 1
 ```
 
 ---
+
+Запустить консоль mysql:
 
 ```
 mysql -u root -p
 ```
+
+Получить количественные данные по таблицам:
+
+```mysql
+    select 'card_certificates' as table_name, count(*) as total from card_certificates
+        UNION ALL
+    select 'card_contacts' as table_name, count(*) as total from card_contacts
+        UNION ALL
+    select 'card_states' as table_name, count(*) as total from card_states
+        UNION ALL
+    select 'cards' as table_name, count(*) as total from cards
+        UNION ALL
+    select 'cards_filters' as table_name, count(*) as total from cards_filters
+        UNION ALL
+    select 'cards_properties' as table_name, count(*) as total from cards_properties
+        UNION ALL
+    select 'group_properties' as table_name, count(*) as total from group_properties
+        UNION ALL
+    select 'properties' as table_name, count(*) as total from properties
+        UNION ALL
+    select 'filter_cities' as table_name, count(*) as total from filter_cities
+        UNION ALL
+    select 'filter_classes' as table_name, count(*) as total from filter_classes
+        UNION ALL
+    select 'filter_countries' as table_name, count(*) as total from filter_countries
+        UNION ALL
+    select 'filter_types' as table_name, count(*) as total from filter_types;
+```
+
+Получить характеристики по конкретной карточке судна:
 
 ```mysql
     select
@@ -92,9 +121,16 @@ mysql -u root -p
       left join properties on properties.id = cards_properties.property_id
       left join group_properties on group_properties.id = properties.group_id
     where
-      cards.identifier = 990745
+      cards.identifier = 990436
     order by group_properties.id, properties.id;
+```
 
+Карточки, у которых нету характеристики:
 
+```mysql
+    select property_id, count(card_id) from cards_properties group by property_id;
 
+    select id, identifier from cards where not id in ( 
+        select distinct card_id from cards_properties where property_id = 13
+    );
 ```

@@ -10,6 +10,9 @@ from models.card_parser import Card_Parser
 from models.logger import Logger
 
 
+# Получить фильтры
+# @param {0|1} mode Если режим = 1, возвращать список объектов, иначе список моделей
+# @todo Вынести возможные данные о фильтрах в файл формата .csv, чтобы не хардкодить в скрипте
 def get_filters(mode=0):
     init_filters = [
         { 'ru_name': 'Города', 'cite_name': 'gorodRegbook', 'db_name': 'cities', 'db_columns': [ 'identifier', 'name', 'name_eng', 'country_ru' ] },
@@ -67,7 +70,7 @@ def command__parse_filters__threads(caption='Спарсить фильтры п�
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-def sequential(filter_chunk, proc):
+def command__parse_filters__multiprocess___sequential(filter_chunk, proc):
     for filter_args in filter_chunk:
         start_time = datetime.datetime.now()
         filter = Filter(); filter.set_attrs(filter_args); filter.parse()
@@ -86,16 +89,17 @@ def command__parse_filters__multiprocess(caption='Спарсить фильтр�
     for filter_chunk in [init_filters[i:i + n] for i in range(0, n_filter, n)]:
         init.append((filter_chunk, index)); index += 1
     with multiprocessing.Pool() as pool:
-       pool.starmap(sequential, init)
+       pool.starmap(command__parse_filters__multiprocess___sequential, init)
     Logger().print_end_status(start_time, 1, caption)
 
     return
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-def command__parse_test_cards_by_identifier(caption='Спарсить тестовые карточки идентификатору'):
+# @todo Избавиться от хардкода, вынести идентификаторы тестовых карточек в файл .csv, напрмиер
+def command__parse_test_cards_by_identifier(caption='Спарсить тестовые карточки по идентификатору'):
     Logger().print_start_status(caption); start_time = datetime.datetime.now(); index = 0
-    for identifier in ['1017605', '990745']:
+    for identifier in ['990436', '1017605', '990745']:
         card_start_time = datetime.datetime.now()
         Logger().print_start_status('[{0}] Карточка #{1}'.format(index+1, identifier), 2)
         Card_Parser(identifier).parse()
@@ -104,6 +108,7 @@ def command__parse_test_cards_by_identifier(caption='Спарсить тесто
 
 # ----------------------------------------------------------------------------------------------------------------------
 
+# @todo Избавиться от хардкода, вынести идентификаторы тестовых карточек в файл .csv, напрмиер
 def command__cmp_test_cards_with_cite_cards(caption='Сравнить тестовые карточки с сайта с карточками из БД'):
     Logger().print_start_status(caption); start_time = datetime.datetime.now(); index = 0
     for identifier in ['1017605', '990745']:
@@ -115,6 +120,7 @@ def command__cmp_test_cards_with_cite_cards(caption='Сравнить тесто
 
 # ----------------------------------------------------------------------------------------------------------------------
 
+# @todo Избавиться от хардкода, вынести идентификаторы тестовых карточек в файл .csv, напрмиер
 def command__export_test_cards(caption='Выгрузить тестовые карточки из БД в формате .csv'):
     Logger().print_start_status(caption); start_time = datetime.datetime.now(); index = 0
     for identifier in ['990745', '1017605']:
@@ -126,6 +132,7 @@ def command__export_test_cards(caption='Выгрузить тестовые ка
 
 # ----------------------------------------------------------------------------------------------------------------------
 
+# @todo Избавиться от хардкода
 def command__parse_cards_by_custom_filters(mode=0):
     caption = ''; params = []
 
@@ -151,6 +158,7 @@ def command__parse_cards_by_custom_filters(mode=0):
 
 # ----------------------------------------------------------------------------------------------------------------------
 
+# @todo Избавиться от хардкода
 def command__parse_cards_by_db_filters(caption='Спарсить карточки по фильтрам из БД'):
     Logger().print_start_status(caption); start_time = datetime.datetime.now()
     filters = [
@@ -169,6 +177,7 @@ def command__parse_cards_by_db_filters(caption='Спарсить карточк�
 
 # ----------------------------------------------------------------------------------------------------------------------
 
+# @todo Избавиться от хардкода
 def command__parse_cards_by_custom_filters__threads(caption='Спарсить карточки ПОТОКАМИ по фильтру: Панама, Панама'):
     Logger().print_start_status(caption); start_time = datetime.datetime.now()
     Parser().parse_with_threads([
@@ -179,6 +188,7 @@ def command__parse_cards_by_custom_filters__threads(caption='Спарсить к
 
 # ----------------------------------------------------------------------------------------------------------------------
 
+# @todo Избавиться от хардкода
 def command__parse_cards_by_db_filters__threads(caption='Спарсить карточки ПОТОКАМИ по фильтрам из БД'):
     filters = []
     match sys.argv[2]:
@@ -215,17 +225,17 @@ def command__parse_cards_by_db_filters__threads(caption='Спарсить кар
 # ======================================================================================================================
 
 commands = [
-    { 'code': '0', 'caption': 'Создать схему БД' },
-    { 'code': '00', 'caption': 'Спарсить фильтры' },
-    { 'code': '000', 'caption': 'Спарсить фильтры потоками' },
-    { 'code': '0000', 'caption': 'Спарсить фильтры мультипроцессорно' },
-    { 'code': '1', 'caption': 'Спарсить тестовые карточки по идентификатору' },
-    { 'code': '2', 'caption': 'Сравнить тестовые карточки с сайта с карточками из БД' },
-    { 'code': '3', 'caption': 'Выгрузить тестовые карточки из БД в формате .csv' },
-    { 'code': '4', 'caption': 'Спарсить карточки по фильтру: Панама, Панама, Нефтеналивные' },
-    { 'code': '5', 'caption': 'Спарсить карточки по фильтрам из БД' },
-    { 'code': '6', 'caption': 'Спарсить карточки ПОТОКАМИ по фильтру: Панама, Панама' },
-    { 'code': '7', 'caption': 'Спарсить карточки ПОТОКАМИ по фильтрам из БД' },
+    { 'code': '1', 'caption': 'Создать схему БД', 'name': 'command__init_schema' },
+    { 'code': '2', 'caption': 'Спарсить фильтры', 'name': 'command__parse_filters' },
+    { 'code': '3', 'caption': 'Спарсить фильтры потоками', 'name': 'command__parse_filters__threads' },
+    { 'code': '4', 'caption': 'Спарсить фильтры мультипроцессорно', 'name': 'command__parse_filters__multiprocess' },
+    { 'code': '5', 'caption': 'Спарсить тестовые карточки по идентификатору', 'name': 'command__parse_test_cards_by_identifier' },
+    { 'code': '6', 'caption': 'Сравнить тестовые карточки с сайта с карточками из БД', 'name': 'command__cmp_test_cards_with_cite_cards' },
+    { 'code': '7', 'caption': 'Выгрузить тестовые карточки из БД в формате .csv', 'name': 'command__export_test_cards' },
+    { 'code': '8', 'caption': 'Спарсить карточки по фильтру: Панама, Панама, Нефтеналивные', 'name': 'command__parse_cards_by_custom_filters' },
+    { 'code': '9', 'caption': 'Спарсить карточки по фильтрам из БД', 'name': 'command__parse_cards_by_db_filters' },
+    { 'code': '10', 'caption': 'Спарсить карточки ПОТОКАМИ по фильтру: Панама, Панама', 'name': 'command__parse_cards_by_custom_filters__threads' },
+    { 'code': '11', 'caption': 'Спарсить карточки ПОТОКАМИ по фильтрам из БД', 'name': 'command__parse_cards_by_db_filters__threads' },
 ]
 
 def main():
@@ -242,32 +252,9 @@ def main():
         return
 
     func_name = ''
-    match sys.argv[1]:
-        case '0':
-            func_name = 'command__init_schema'
-        case '00':
-            func_name = 'command__parse_filters'
-        case '000':
-            func_name = 'command__parse_filters__threads'
-        case '0000':
-            func_name = 'command__parse_filters__multiprocess'
-        case '1':
-            func_name = 'command__parse_test_cards_by_identifier'
-        case '2':
-            func_name = 'command__cmp_test_cards_with_cite_cards'
-        case '3':
-            func_name = 'command__export_test_cards'
-        case '4':
-            func_name = 'command__parse_cards_by_custom_filters'
-        case '5':
-            func_name = 'command__parse_cards_by_db_filters'
-        case '6':
-            func_name = 'command__parse_cards_by_custom_filters__threads'
-        case '7':
-            func_name = 'command__parse_cards_by_db_filters__threads'
-        case _:
-            print(f'Команды с кодом "{sys.argv[1]}" не существует')
-            return
+    for command in commands:
+        if sys.argv[1] == command['code']:
+            func_name = command['name']
 
     if func_name == '':
         print(f'Команды с кодом "{sys.argv[1]}" не существует')

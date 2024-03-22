@@ -34,8 +34,6 @@ class Group:
             cursor.execute('INSERT INTO group_properties (name) VALUES (%s)', (self.name,))
             self.id = cursor.lastrowid
             connection.commit()
-        except Exception as e:
-            print('[card.create]', e)
         finally:
             cursor.close()
             connection.close()
@@ -49,7 +47,7 @@ class Group:
         if group_id == None:
             try:
                 group_id = self.create()
-            except e:
+            except Exception as e:
                 group_id = self.get()
 
         return group_id
