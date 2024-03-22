@@ -1,4 +1,5 @@
 import sys
+import csv
 import datetime
 import db_connector
 import multiprocessing
@@ -6,8 +7,8 @@ import multiprocessing
 from models.card import Card
 from models.parser import Parser
 from models.filter import Filter
-from models.card_parser import Card_Parser
 from models.logger import Logger
+from models.card_parser import Card_Parser
 
 
 # Получить фильтры
@@ -30,6 +31,43 @@ def get_filters(mode=0):
         filters.append(filter)
 
     return filters
+
+def get_filters_by_name(filter_name):
+    filters = get_filters()
+
+    match filter_name:
+        case 'cities':
+            filters = filters[0]
+        case 'countries':
+            filters = filters[1]
+        case 'types':
+            filters = filters[2]
+        case 'classes':
+            filters = filters[3]
+        case 'all':
+            filters = filters
+        case _:
+            filters = []
+            print(f'Фильтра "{sys.argv[2]}" не существует')
+
+    return filters
+
+def get_test_params(type, number):
+    params = []; sub_caption = ''
+    with open(f'tests/{type}-{number}.csv', newline='') as test_file:
+        rows = csv.reader(test_file, delimiter=';', quotechar='|')
+        print(rows)
+        for row in rows:
+            if type == 'filter' and len(row) >= 4:
+                sub_caption += row[3] + ' / '
+                params.append({ 'name': row[0], 'value': row[1], 'field': row[2] })
+            if type == 'card' and len(row) >= 1:
+                sub_caption += row[0] + ' / '
+                params.append(row[0])
+        if len(sub_caption) > 0:
+            sub_caption = ': ' + sub_caption
+
+    return [ params, sub_caption ]
 
 # ======================================================================================================================
 
@@ -96,10 +134,14 @@ def command__parse_filters__multiprocess(caption='Спарсить фильтр�
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-# @todo Избавиться от хардкода, вынести идентификаторы тестовых карточек в файл .csv, напрмиер
-def command__parse_test_cards_by_identifier(caption='Спарсить тестовые карточки по идентификатору'):
+def command__parse_test_cards_by_identifier(caption='Спарсить тестовые карточки по идентификатору', test='0'):
+    if test == '0': return
+
+    identifiers, sub_caption = get_test_params('card', test)
+    caption += sub_caption
+
     Logger().print_start_status(caption); start_time = datetime.datetime.now(); index = 0
-    for identifier in ['990436', '1017605', '990745']:
+    for identifier in identifiers:
         card_start_time = datetime.datetime.now()
         Logger().print_start_status('[{0}] Карточка #{1}'.format(index+1, identifier), 2)
         Card_Parser(identifier).parse()
@@ -108,10 +150,14 @@ def command__parse_test_cards_by_identifier(caption='Спарсить тесто
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-# @todo Избавиться от хардкода, вынести идентификаторы тестовых карточек в файл .csv, напрмиер
-def command__cmp_test_cards_with_cite_cards(caption='Сравнить тестовые карточки с сайта с карточками из БД'):
+def command__cmp_test_cards_with_cite_cards(caption='Сравнить тестовые карточки с сайта с карточками из БД', test='0'):
+    if test == '0': return
+
+    identifiers, sub_caption = get_test_params('card', test)
+    caption += sub_caption
+
     Logger().print_start_status(caption); start_time = datetime.datetime.now(); index = 0
-    for identifier in ['1017605', '990745']:
+    for identifier in identifiers:
         card_start_time = datetime.datetime.now()
         Logger().print_start_status('[{0}] Карточка #{1}'.format(index+1, identifier), 2)
         Card(identifier).cmp_with_cite()
@@ -120,10 +166,14 @@ def command__cmp_test_cards_with_cite_cards(caption='Сравнить тесто
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-# @todo Избавиться от хардкода, вынести идентификаторы тестовых карточек в файл .csv, напрмиер
-def command__export_test_cards(caption='Выгрузить тестовые карточки из БД в формате .csv'):
+def command__export_test_cards(caption='Выгрузить тестовые карточки из БД в формате .csv', test='0'):
+    if test == '0': return
+
+    identifiers, sub_caption = get_test_params('card', test)
+    caption += sub_caption
+
     Logger().print_start_status(caption); start_time = datetime.datetime.now(); index = 0
-    for identifier in ['990745', '1017605']:
+    for identifier in identifiers:
         card_time_start = datetime.datetime.now()
         Logger().print_start_status('[{0}] Карточка #{1}'.format(index+1, identifier), 2)
         Card(identifier).export()
@@ -132,25 +182,11 @@ def command__export_test_cards(caption='Выгрузить тестовые ка
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-# @todo Избавиться от хардкода
-def command__parse_cards_by_custom_filters(mode=0):
-    caption = ''; params = []
+def command__parse_cards_by_custom_filters(caption='Спарсить карточки по тест-фильтру', test='0'):
+    if test == '0': return
 
-    match mode:
-        case 0:
-            caption = 'Спарсить карточки по фильтру: Россия, Владивосток, Научно-исследовательские'
-            params = [
-                { 'name': 'gorodRegbook', 'value': '0E224C4F-DE2B-4DD6-AB9B-B6BBABB7B7C4', 'field': 'filter_city_identifier' },
-                { 'name': 'countryId', 'value': '6CF1E5F4-2B6D-4DC6-836B-287154684870', 'field': 'filter_country_identifier' },
-                { 'name': 'statgr', 'value': '47488F18-691C-AD5D-0A1C-9EA637E43848', 'field': 'filter_type_identifier' },
-            ]
-        case 1:
-            caption = 'Спарсить карточки по фильтру: Панама, Панама, Нефтеналивные'
-            params = [
-                { 'name': 'gorodRegbook', 'value': 'DD1212EB-494D-41E4-A54A-B914845826A1', 'field': 'filter_city_identifier' },
-                { 'name': 'countryId', 'value': 'D3339EB0-B3A8-461F-8493-DE358CAB09C7', 'field': 'filter_country_identifier' },
-                { 'name': 'statgr', 'value': 'F188B3EF-E54D-D82E-6F79-AD7D9A4A4CCD', 'field': 'filter_type_identifier' },
-            ]
+    params, sub_caption = get_test_params('filter', test)
+    caption += sub_caption
 
     Logger().print_start_status(caption); start_time = datetime.datetime.now()
     Parser().parse(params, 2)
@@ -158,16 +194,9 @@ def command__parse_cards_by_custom_filters(mode=0):
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-# @todo Избавиться от хардкода
 def command__parse_cards_by_db_filters(caption='Спарсить карточки по фильтрам из БД'):
     Logger().print_start_status(caption); start_time = datetime.datetime.now()
-    filters = [
-        Filter('Города', 'gorodRegbook', 'cities', [ 'identifier', 'name', 'name_eng', 'country_ru' ], 'filter_city_identifier'),
-        Filter('Страны', 'countryId', 'countries', [ 'identifier', 'name', 'name_eng' ], 'filter_country_identifier'),
-        Filter('Статистические группы судов', 'statgr', 'types', [ 'identifier', 'code', 'name', 'name_eng' ], 'filter_type_identifier'),
-        Filter('Ледовые категории', 'icecat', 'classes', [ 'identifier', 'name' ], 'filter_class_identifier')
-    ]
-    for filter in filters:
+    for filter in get_filters_by_name(sys.argv[2]):
         filter_start_time = datetime.datetime.now()
         Logger().print_start_status('Фильтр '+filter.ru_name.upper(), 2)
         for row in filter.get_list():
@@ -177,41 +206,21 @@ def command__parse_cards_by_db_filters(caption='Спарсить карточк�
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-# @todo Избавиться от хардкода
-def command__parse_cards_by_custom_filters__threads(caption='Спарсить карточки ПОТОКАМИ по фильтру: Панама, Панама'):
+def command__parse_cards_by_custom_filters__threads(caption='Спарсить карточки ПОТОКАМИ по тест-фильтру', test='0'):
+    if test == '0': return
+
+    params, sub_caption = get_test_params('filter', test)
+    caption += sub_caption
+
     Logger().print_start_status(caption); start_time = datetime.datetime.now()
-    Parser().parse_with_threads([
-        { 'name': 'gorodRegbook', 'value': 'DD1212EB-494D-41E4-A54A-B914845826A1', 'field': 'filter_city_identifier' },
-        { 'name': 'countryId', 'value': 'D3339EB0-B3A8-461F-8493-DE358CAB09C7', 'field': 'filter_country_identifier' },
-    ], 2, True)
+    Parser().parse_with_threads(params, 2, True)
     Logger().print_end_status(start_time)
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-# @todo Избавиться от хардкода
 def command__parse_cards_by_db_filters__threads(caption='Спарсить карточки ПОТОКАМИ по фильтрам из БД'):
-    filters = []
-    match sys.argv[2]:
-        case 'cities':
-            filters = [Filter('Города', 'gorodRegbook', 'cities', [ 'identifier', 'name', 'name_eng', 'country_ru' ], 'filter_city_identifier')]
-        case 'countries':
-            filters = [Filter('Страны', 'countryId', 'countries', [ 'identifier', 'name', 'name_eng' ], 'filter_country_identifier')]
-        case 'types':
-            filters = [Filter('Статистические группы судов', 'statgr', 'types', [ 'identifier', 'code', 'name', 'name_eng' ], 'filter_type_identifier')]
-        case 'classes':
-            filters = [Filter('Ледовые категории', 'icecat', 'classes', [ 'identifier', 'name' ], 'filter_class_identifier')]
-        case 'all':
-            filters = [
-                Filter('Города', 'gorodRegbook', 'cities', [ 'identifier', 'name', 'name_eng', 'country_ru' ], 'filter_city_identifier'),
-                Filter('Страны', 'countryId', 'countries', [ 'identifier', 'name', 'name_eng' ], 'filter_country_identifier'),
-                Filter('Статистические группы судов', 'statgr', 'types', [ 'identifier', 'code', 'name', 'name_eng' ], 'filter_type_identifier'),
-                Filter('Ледовые категории', 'icecat', 'classes', [ 'identifier', 'name' ], 'filter_class_identifier')
-            ]
-        case _:
-            print(f'Фильтра "{sys.argv[2]}" не существует')
-
     Logger().print_start_status(caption); start_time = datetime.datetime.now()
-    for filter in filters:
+    for filter in get_filters_by_name(sys.argv[2]):
         filter_start_time = datetime.datetime.now()
         filter_values = filter.get_list()
         caption = f'Фильтр {filter.ru_name.upper()} ({filter_values} шт. значений)'
@@ -229,12 +238,12 @@ commands = [
     { 'code': '2', 'caption': 'Спарсить фильтры', 'name': 'command__parse_filters' },
     { 'code': '3', 'caption': 'Спарсить фильтры потоками', 'name': 'command__parse_filters__threads' },
     { 'code': '4', 'caption': 'Спарсить фильтры мультипроцессорно', 'name': 'command__parse_filters__multiprocess' },
-    { 'code': '5', 'caption': 'Спарсить тестовые карточки по идентификатору', 'name': 'command__parse_test_cards_by_identifier' },
-    { 'code': '6', 'caption': 'Сравнить тестовые карточки с сайта с карточками из БД', 'name': 'command__cmp_test_cards_with_cite_cards' },
-    { 'code': '7', 'caption': 'Выгрузить тестовые карточки из БД в формате .csv', 'name': 'command__export_test_cards' },
-    { 'code': '8', 'caption': 'Спарсить карточки по фильтру: Панама, Панама, Нефтеналивные', 'name': 'command__parse_cards_by_custom_filters' },
+    { 'code': '5', 'caption': 'Спарсить тест-карточки по идентификатору', 'name': 'command__parse_test_cards_by_identifier' },
+    { 'code': '6', 'caption': 'Сравнить тест-карточки с сайта с карточками из БД', 'name': 'command__cmp_test_cards_with_cite_cards' },
+    { 'code': '7', 'caption': 'Выгрузить тест-карточки из БД в формате .csv', 'name': 'command__export_test_cards' },
+    { 'code': '8', 'caption': 'Спарсить карточки по тест-фильтру', 'name': 'command__parse_cards_by_custom_filters' },
     { 'code': '9', 'caption': 'Спарсить карточки по фильтрам из БД', 'name': 'command__parse_cards_by_db_filters' },
-    { 'code': '10', 'caption': 'Спарсить карточки ПОТОКАМИ по фильтру: Панама, Панама', 'name': 'command__parse_cards_by_custom_filters__threads' },
+    { 'code': '10', 'caption': 'Спарсить карточки ПОТОКАМИ по тест-фильтру', 'name': 'command__parse_cards_by_custom_filters__threads' },
     { 'code': '11', 'caption': 'Спарсить карточки ПОТОКАМИ по фильтрам из БД', 'name': 'command__parse_cards_by_db_filters__threads' },
 ]
 
@@ -247,23 +256,30 @@ def main():
             print(f'{code} - {caption}')
         return
 
-    if sys.argv[1] == '7' and len(sys.argv) < 3:
+    if (sys.argv[1] == '11' or sys.argv[1] == '9') and len(sys.argv) < 3:
         print('Укажите один из возможных вариантов фильтра карточек: cities, countries, types, classes, all.')
         return
 
-    func_name = ''
+    if sys.argv[1] in ['8', '10', '5', '6', '7'] and len(sys.argv) < 3:
+        print('Укажите номер теста')
+        return
+
+    run_command = None
     for command in commands:
         if sys.argv[1] == command['code']:
-            func_name = command['name']
+            run_command = command
 
-    if func_name == '':
+    if run_command is None:
         print(f'Команды с кодом "{sys.argv[1]}" не существует')
         return
 
     total_start_time = datetime.datetime.now()
     Logger().print_start_status('Начало работы скрипта', 0)
 
-    eval(func_name + "()")
+    params = [ run_command['caption'] ]
+    if (sys.argv[1] in ['11', '9', '8', '10', '5', '6', '7']):
+        params.append(sys.argv[2])
+    eval(run_command['name'])(*params)
 
     Logger().print_end_status(total_start_time, 0)
 
