@@ -37,13 +37,13 @@ def get_filters_by_name(filter_name):
 
     match filter_name:
         case 'cities':
-            filters = filters[0]
+            filters = [filters[0]]
         case 'countries':
-            filters = filters[1]
+            filters = [filters[1]]
         case 'types':
-            filters = filters[2]
+            filters = [filters[2]]
         case 'classes':
-            filters = filters[3]
+            filters = [filters[3]]
         case 'all':
             filters = filters
         case _:
@@ -56,7 +56,6 @@ def get_test_params(type, number):
     params = []; sub_caption = ''
     with open(f'tests/{type}-{number}.csv', newline='') as test_file:
         rows = csv.reader(test_file, delimiter=';', quotechar='|')
-        print(rows)
         for row in rows:
             if type == 'filter' and len(row) >= 4:
                 sub_caption += row[3] + ' / '
@@ -256,7 +255,7 @@ def main():
             print(f'{code} - {caption}')
         return
 
-    if (sys.argv[1] == '11' or sys.argv[1] == '9') and len(sys.argv) < 3:
+    if (sys.argv[1] in ['9', '11']) and len(sys.argv) < 3:
         print('Укажите один из возможных вариантов фильтра карточек: cities, countries, types, classes, all.')
         return
 
